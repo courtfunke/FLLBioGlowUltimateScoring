@@ -251,7 +251,8 @@ button{cursor:pointer}
 const TEAMS = [
   ["Apex-GPT"],["Automatrons"],["Biobots"],["Canopy Coders"],["Codebreakers"],["Cybertronic"],["Duckzilla"],
   ["Error 404","Error 404: Chicken Not Found"],["Headless Chickens"],["Legacy Builders"],["MARS Eagles"],["Master KARDS"],
-  ["Phoenix Phorce"],["Roz"],["Short Circuit"],["Solar Stars"],["Terrabyte Titans"]
+  ["Phoenix Phorce"],["Roz"],["Short Circuit"],["Solar Stars"],["Terrabyte Titans"],
+  ["Test"]
 ].map(([s,f]) => ({short:s, full:f||s}));
 
 // Positions are % of the map (taken from the numbered reference map). 8 & 9 swapped per coach request.
@@ -588,21 +589,33 @@ let AC;
 function beep(f,d,type="square",vol=.9){ try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume();
   const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.value=f; g.gain.setValueAtTime(vol,AC.currentTime); g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);
   o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime+d); }catch(e){} }
-function say(t){ try{ const u = new SpeechSynthesisUtterance(t); u.volume=1; u.rate=1; u.pitch=.85;
-  const v = speechSynthesis.getVoices().find(v=>/en[-_]US/i.test(v.lang)); if(v) u.voice=v; speechSynthesis.speak(u); }catch(e){} }
+function utter(t){ const u = new SpeechSynthesisUtterance(t); u.volume=1; u.rate=1; u.pitch=.85;
+  const v = speechSynthesis.getVoices().find(v=>/en[-_]US/i.test(v.lang)); if(v) u.voice=v; return u; }
+function say(t){ try{ speechSynthesis.speak(utter(t)); }catch(e){} }
+// Speaks t and calls onStart when the voice actually starts (or after a short fallback if the browser never reports it).
+// Returns how long the browser took to start talking, so the next word can be queued that much earlier.
+function speakSynced(t, onStart){
+  const asked = performance.now(); let fired = false;
+  const go = () => { if(fired) return; fired = true; onStart(performance.now() - asked); };
+  try{ const u = utter(t); u.onstart = go; speechSynthesis.speak(u); }catch(e){}
+  setTimeout(go, 600);
+}
 
 $("startBtn").onclick = () => {
   if(counting||running) return;
   if(ended || remainMs<=0){ remainMs = MATCH*1000; ended = false; showClock(); }
   counting = true; $("startBtn").disabled = true;
-  try{ speechSynthesis.cancel(); }catch(e){}
   const ov = document.createElement("div"); ov.id="count"; document.body.appendChild(ov);
-  const seq = ["3","2","1","LEGO!"];
-  seq.forEach((w,i) => setTimeout(() => {
-    ov.innerHTML = `<span class="${i===3?"lego":""}">${w}</span>`;
-    say(i===3?"LEGO!":w);
-    if(i===3) setTimeout(()=>{ ov.remove(); counting=false; run(); }, 800);
-  }, i*1000));
+  const words = ["3","2","1","LEGO!"];
+  // Each number appears the moment its word is heard; the next word is queued early by the measured speech delay.
+  const step = i => speakSynced(words[i], lag => {
+    ov.innerHTML = `<span class="${i===3?"lego":""}">${words[i]}</span>`;
+    if(i<3) setTimeout(() => step(i+1), Math.max(400, 1000 - Math.min(lag, 600)));
+    else { counting = false; run(); setTimeout(() => ov.remove(), 900); }   // clock starts on "LEGO!"
+  });
+  // Wake up the speech engine silently first, so "3" isn't delayed.
+  try{ speechSynthesis.cancel(); const w = utter(" "); w.volume = 0; speechSynthesis.speak(w); }catch(e){}
+  setTimeout(() => step(0), 250);
 };
 function run(){
   running = true; $("endBtn").disabled=false; $("startBtn").disabled=true;
@@ -654,7 +667,7 @@ function openAdjust(){
           items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
           route: routeText(), sent: false,
           scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
-        history.unshift(lastResult); close(); commit(); showImage(lastResult, sendToSheet(lastResult));
+        history.unshift(lastResult); close(); commit(); showImage(lastResult, true);
       };
     }, true);
 }
@@ -671,11 +684,12 @@ function renderHistory(){
 /* ================= GOOGLE SHEET ================= */
 // Sends one row: Timestamp, Team Name, Total Score, Inspection Bonus, M01–M15, Precision Tokens (points).
 // Returns {ok} or {ok:false, what, why}; the caller decides how to show it.
-async function sendToSheet(r){
+async function sendToSheet(r, jpeg){
   if(!r || !r.scores) return {ok:false, what:"This match has no scores to send.", why:""};
   if(!SHEET_URL) return {ok:false, off:true, what:"The Google Sheet link (SHEET_URL) is empty in index.html.", why:"Paste the web app URL ending in <b>/exec</b> between the quotes and upload index.html to GitHub."};
   const sc = r.scores, row = {team: r.team, total: r.actual, inspection: sc.insp ?? 0, precision: sc.prec ?? 0, missions: {}};
   for(let id=1; id<=15; id++) row.missions[id] = id===10 ? (sc.m10 ?? 0) : (sc["m"+id] ?? 0);
+  if(jpeg){ row.image = jpeg; row.imageName = imageName(r, "jpg"); }
   let res, out;
   try{ res = await fetch(SHEET_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(row)}); }
   catch(e){ return {ok:false, what:"The app couldn't connect to the Google Sheet script.",
@@ -686,9 +700,9 @@ async function sendToSheet(r){
   if(!out.ok) return {ok:false, what:"The script ran but couldn't add the row.",
     why:`Google said: <code>${esc(out.error||"unknown error")}</code>. If it mentions <b>null</b> or <b>appendRow</b>, the tab name in the script doesn't match a tab in the sheet.`};
   r.sent = true; save(); renderHistory();
-  return {ok:true};
+  return {ok:true, emailed: out.emailed || 0, emailNote: out.emailNote || ""};
 }
-const sheetMsg = res => res.ok ? `<div class="sheetnote ok">✓ Added to the Google Sheet.</div>`
+const sheetMsg = res => res.ok ? `<div class="sheetnote ok">✓ Added to the Google Sheet.${res.emailed ? ` Emailed to ${res.emailed} address${res.emailed>1?"es":""}.` : ""}</div>${res.emailNote ? `<div class="sheetnote bad">${esc(res.emailNote)}</div>` : ""}`
   : res.off ? `<div class="sheetnote">Google Sheet sending is off: ${res.what}</div>`
   : `<div class="sheetnote bad"><b>${res.title || "Not added to the Google Sheet."}</b> ${res.what} ${res.why}${res.title ? "" : "<br>The match is still saved here. After fixing it, click <b>Send to Google Sheet</b> under Saved matches."}</div>`;
 function sheetProblem(what, why, title){
@@ -696,8 +710,11 @@ function sheetProblem(what, why, title){
 }
 async function resend(r){
   toast("Sending to the Google Sheet…");
-  const res = await sendToSheet(r); renderHistory();
-  if(res.ok) toast(`${r.team}: ${r.actual} points added to the Google Sheet.`); else sheetProblem(res.what, res.why);
+  let jpeg = null; try{ jpeg = (await buildImage(r)).toDataURL("image/jpeg", .85).split(",")[1]; }catch(e){}
+  const res = await sendToSheet(r, jpeg); renderHistory();
+  if(res.ok && !res.emailNote) toast(`${r.team}: ${r.actual} points added to the Google Sheet${res.emailed ? " and emailed" : ""}.`);
+  else if(res.ok) modal(`<h3>Google Sheet</h3>${sheetMsg(res)}<div class="mfoot"><button class="btn" data-x>OK</button></div>`);
+  else sheetProblem(res.what, res.why);
 }
 // "Test Google Sheet" button: checks the script link without adding a row
 async function testSheet(){
@@ -830,11 +847,14 @@ async function buildImage(r){
 function wrap(g, text, max){ const out=[]; let line="";
   text.split(" ").forEach(w => { const t = line ? line+" "+w : w; if(g.measureText(t).width > max && line){ out.push(line); line=w; } else line=t; });
   if(line) out.push(line); return out; }
-async function showImage(r, sending){
+function imageName(r, ext){ const d = new Date();
+  return `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.${ext}`; }
+async function showImage(r, send){
   modal(`<h3>Building the map image…</h3><p>This takes a moment.</p>`, null, true);
   let c; try{ c = await buildImage(r); }catch(e){ close(); return toast("The image could not be built. Try again."); }
   const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
   const src = c.toDataURL("image/png");
+  const sending = send ? sendToSheet(r, c.toDataURL("image/jpeg", .85).split(",")[1]) : null;
   modal(`<h3>${esc(r.team)} · ${r.actual} points</h3>
     <p>Here is the route map, match timeline and score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
     <div id="sheetStatus">${sending ? `<div class="sheetnote">Sending to the Google Sheet…</div>` : ""}</div>
@@ -866,6 +886,7 @@ function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 try{ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => {}; }catch(e){}
 
 showClock(); render();
+try{ speechSynthesis.getVoices(); }catch(e){}
 })();
 </script>
 
