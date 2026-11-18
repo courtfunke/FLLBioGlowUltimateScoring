@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BioGlow Run Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,800&display=swap">
+<style>
+/* Layout: control deck on top, field map center-left, plan sidebar right; stacks on narrow screens. Single dark "night canopy" look by design. */
+:root{
+  --bg:#0b1a14; --panel:#11261d; --panel-2:#183428; --line:#2a4a3b;
+  --fg:#e9f5ee; --muted:#9fbfae;
+  --glow:#7dffb2; --red:#e0383b; --red-dk:#a71f24; --blue:#2f7ff0; --blue-dk:#1d55a8; --gold:#ffd166;
+  --display:"Chakra Petch","Trebuchet MS",system-ui,sans-serif;
+  --body:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:15px;line-height:1.45;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 28px}
+button,select{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.wrap{max-width:1500px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+
+/* ---------- Top deck ---------- */
+.deck{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:14px;align-items:stretch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.brand{display:flex;flex-direction:column;gap:8px;justify-content:center}
+.brand h1{font-family:var(--display);font-weight:700;font-size:1.25rem;margin:0;letter-spacing:.02em;color:var(--glow);text-wrap:balance}
+.brand label{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+#team{width:100%;font-size:1.15rem;font-weight:800;padding:10px 12px;border-radius:10px;border:2px solid var(--glow);background:var(--panel-2);color:var(--fg)}
+.timer{display:flex;flex-direction:column;align-items:center;gap:8px;padding-inline:22px}
+#clock{font-family:var(--display);font-weight:700;font-size:clamp(3.2rem,8vw,5.4rem);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.04em;color:var(--fg);text-shadow:0 0 22px rgba(125,255,178,.35)}
+#clock.warn{color:var(--gold)} #clock.done{color:var(--red)}
+.timer-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.btn{border:0;border-radius:10px;padding:9px 16px;font-weight:800;background:var(--panel-2);color:var(--fg);border:1px solid var(--line)}
+.btn:hover{border-color:var(--glow)}
+.btn.go{background:var(--glow);color:#06281a;border-color:var(--glow);font-size:1.05rem;padding-inline:24px}
+.btn.small{padding:6px 11px;font-size:.85rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.precision{display:flex;align-items:center;gap:14px;justify-content:flex-end}
+#precisionBtn{background:var(--red);color:#fff;border:0;border-radius:14px;font-family:var(--display);font-weight:700;font-size:clamp(1.4rem,3vw,2.1rem);letter-spacing:.08em;padding:18px 26px;box-shadow:0 6px 0 var(--red-dk),0 0 24px rgba(224,56,59,.4);transition:transform .06s}
+#precisionBtn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--red-dk)}
+#precisionBtn:disabled{filter:grayscale(.7);opacity:.6}
+.tokens{display:flex;flex-direction:column;align-items:center;gap:6px}
+.pips{display:flex;gap:5px}
+.pip{width:18px;height:18px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px rgba(255,209,102,.6)}
+.pip.lost{background:transparent;border:2px solid var(--line);box-shadow:none}
+.tokens small{color:var(--muted);font-size:.78rem;text-align:center}
+.tokens b{color:var(--fg)}
+
+/* ---------- Main ---------- */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+.mapcard{padding:10px}
+.hint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin:0 4px 8px}
+#hintText{font-weight:600;color:var(--glow)}
+.map{position:relative;width:100%;max-width:100%;aspect-ratio:3600/2037;border-radius:10px;overflow:hidden;background:#123}
+.map img{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
+.map svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin:8px 4px 0}
+.legend i{display:inline-block;width:26px;height:5px;border-radius:3px;vertical-align:middle;margin-right:6px}
+
+.side{display:flex;flex-direction:column;gap:14px}
+.side h2{font-family:var(--display);font-size:1rem;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
+.big{font-family:var(--display);font-weight:700;font-size:2.6rem;line-height:1;font-variant-numeric:tabular-nums;color:var(--glow)}
+.rows{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:.9rem;margin-top:10px}
+.rows .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.rows .sub{color:var(--muted)}
+.rows hr{grid-column:1/-1;border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:420px;overflow:auto}
+.timeline li{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px dashed var(--line);font-size:.9rem}
+.timeline .n{font-family:var(--display);font-weight:700;color:var(--muted);text-align:right}
+.timeline .pts{font-weight:800;font-variant-numeric:tabular-nums}
+.timeline .run{display:flex;justify-content:space-between;font-family:var(--display);letter-spacing:.06em;font-size:.78rem;text-transform:uppercase;padding-top:10px;border:0}
+.chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:800}
+.chip.red{background:var(--red);color:#fff}.chip.blue{background:var(--blue);color:#fff}
+.empty{color:var(--muted);font-size:.9rem}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- Modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(3,10,7,.72);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{background:var(--panel);border:2px solid var(--glow);border-radius:16px;padding:20px;width:min(560px,100%);max-height:92vh;overflow:auto;box-shadow:0 0 40px rgba(125,255,178,.25)}
+.modal.wide{width:min(860px,100%)}
+.modal h3{font-family:var(--display);font-size:1.5rem;margin:0 0 4px;text-wrap:balance}
+.modal p{margin:0 0 14px;color:var(--muted)}
+.opts{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.opt{min-width:84px;padding:14px 16px;border-radius:12px;border:2px solid var(--line);background:var(--panel-2);color:var(--fg);font-family:var(--display);font-weight:700;font-size:1.4rem}
+.opt:hover,.opt.sel{border-color:var(--glow);background:#1d4a35}
+.opt small{display:block;font-family:var(--body);font-size:.72rem;font-weight:600;color:var(--muted)}
+.mfoot{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.blue{background:var(--blue);border-color:var(--blue);color:#fff}
+.adj{width:100%;border-collapse:collapse;font-size:.92rem}
+.adj th,.adj td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+.adj th{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.adj td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:800}
+.adj select{background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-weight:700}
+.adj tr.changed td{background:rgba(255,209,102,.08)}
+.adj tr.changed select{border-color:var(--gold)}
+.tablewrap{overflow-x:auto;margin-bottom:14px}
+.totals{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+.totals div{display:flex;flex-direction:column}
+.totals span{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.totals b{font-family:var(--display);font-size:2rem;font-variant-numeric:tabular-nums}
+
+/* countdown overlay */
+#count{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,10,7,.8);z-index:60;pointer-events:none}
+#count span{font-family:var(--display);font-weight:700;font-size:min(34vw,320px);color:var(--glow);text-shadow:0 0 50px rgba(125,255,178,.7);animation:pop .9s ease-out both}
+#count span.lego{color:var(--gold);font-size:min(22vw,220px)}
+@keyframes pop{from{transform:scale(1.6);opacity:0}30%{opacity:1}to{transform:scale(1);opacity:1}}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--glow);padding:10px 16px;border-radius:10px;z-index:70;font-weight:600;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion:reduce){#count span{animation:none}}
+
+/* history */
+.hist{font-size:.85rem;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+.hist div{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.hist small{color:var(--muted);grid-column:1/-1}
+
+/* print report */
+#report{display:none}
+@media (max-width:1100px){.main{grid-template-columns:1fr}.deck{grid-template-columns:1fr 1fr}.timer{grid-column:1/-1;order:-1}.precision{justify-content:center}}
+@media (max-width:620px){.deck{grid-template-columns:1fr}#precisionBtn{width:100%}.precision{flex-direction:column}}
+@media print{
+  :root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--panel:#fff}
+  body{background:#fff;color:#000;padding:0}
+  .deck,.side,.hint,.legend,.scrim,#count,.toast{display:none!important}
+  .main{display:block}.mapcard{border:0;padding:0}
+  #report{display:block;font-family:var(--body);color:#000;page-break-before:always}
+  #report h1{font-family:var(--display);margin:0 0 4px}
+  #report table{width:100%;border-collapse:collapse;font-size:11pt;margin-top:10px}
+  #report th,#report td{border:1px solid #999;padding:4px 6px;text-align:left}
+  #report td.num,#report th.num{text-align:right}
+}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <section class="deck">
+    <div class="card brand">
+      <h1>BioGlow Run Planner</h1>
+      <label for="team">Team</label>
+      <select id="team"></select>
+    </div>
+    <div class="card timer">
+      <div id="clock" aria-live="polite">2:30</div>
+      <div class="timer-btns">
+        <button class="btn go" id="startBtn">Start</button>
+        <button class="btn" id="pauseBtn" disabled>Pause</button>
+        <button class="btn" id="resetBtn">Reset</button>
+        <button class="btn" id="scoreBtn">Score Now</button>
+      </div>
+    </div>
+    <div class="card precision">
+      <button id="precisionBtn" aria-label="Use one precision token">PRECISION</button>
+      <div class="tokens">
+        <div class="pips" id="pips"></div>
+        <small><b id="tokCount">6</b> tokens left = <b id="tokPts">50</b> pts</small>
+        <button class="btn small" id="tokUndo">Undo</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="main">
+    <div class="card mapcard">
+      <div class="hint">
+        <span id="hintText">Click the red or blue launch area to start planning.</span>
+        <div class="actions">
+          <button class="btn small" id="undoBtn">Undo last stop</button>
+          <button class="btn small" id="clearBtn">Clear plan</button>
+          <button class="btn small" id="printBtn">Print report</button>
+        </div>
+      </div>
+      <div class="map" id="map">
+        <img src="map.jpg" alt="BioGlow mission field map" draggable="false">
+        <svg id="svg" viewBox="0 0 3600 2037" preserveAspectRatio="none" aria-label="Clickable mission map"></svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--blue)"></i>Launch → mission, mission → mission</span>
+        <span><i style="background:var(--red)"></i>Mission → launch, launch → launch</span>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h2>Planned score</h2>
+        <div class="big" id="plannedTotal">90</div>
+        <div class="rows" id="scoreRows"></div>
+      </div>
+      <div class="card">
+        <h2>Run timeline</h2>
+        <ol class="timeline" id="timeline"></ol>
+      </div>
+      <div class="card">
+        <h2>Saved matches</h2>
+        <div class="hist" id="history"></div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn small" id="csvBtn">Download CSV</button>
+          <button class="btn small" id="histClear">Clear history</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section id="report"></section>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+(() => {
+/* ================= DATA ================= */
+const TEAMS = [
+  ["Apex-GPT"],["Automatrons"],["Biobots"],["Canopy Coders"],["Codebreakers"],["Cybertronic"],["Duckzilla"],
+  ["Error 404","Error 404: Chicken Not Found"],["Headless Chickens"],["Legacy Builders"],["MARS Eagles"],["Master KARDS"],
+  ["Phoenix Phorce"],["Roz"],["Short Circuit"],["Solar Stars"],["Terrabyte Titans"]
+].map(([s,f]) => ({short:s, full:f||s}));
+
+// Positions are % of the map (taken from the numbered reference map). 8 & 9 swapped per coach request.
+const MISSIONS = {
+  1:{name:"Drone Survey",opts:[20,30],pos:[43.8,92.7]},
+  2:{name:"Exploding Seeds",opts:[10,20,30],pos:[31.7,52.2]},
+  3:{name:"Flip the Rock",opts:[20,30],pos:[4.7,40.9]},
+  4:{name:"Lucky Leaves",opts:[10,30],pos:[7.7,13.3]},
+  5:{name:"Reaching Roots",opts:[10,20],pos:[19.9,7.1]},
+  6:{name:"Leafcutter Frenzy",opts:[10,20,30,40],pos:[75.4,6.9]},
+  7:{name:"Humongous Fungus",opts:[20],pos:[81.6,6.9]},
+  8:{name:"Tangled",opts:[30],pos:[32.8,7.1]},
+  9:{name:"Research Platform",opts:[10,20,30],pos:[26.9,7.1]},
+  11:{name:"Windows to the Past",opts:[20],pos:[69.8,47.3]},
+  12:{name:"Forest Elder",opts:[10,20,30],pos:[95.6,33.2]},
+  13:{name:"Keystone Species",opts:[30]},
+  14:{name:"Seeds of Renewal",opts:[5,10,15,20,25,30,35,40]},
+  15:{name:"Biocentric Architecture",opts:[10,20,30,40]},
+};
+const ORDER = [1,2,3,4,5,6,7,8,9,11,12,13,14,15];
+const BOXES = {A:[94.2,10.1], B:[49.5,45.0], C:[64.0,91.7]};
+const M10 = [[38.9,10.4],[54.4,32.6]];
+const PREC = [0,10,15,25,35,50,50];
+const LAUNCH = {red:{c:[0,2037],a:[330,1720],label:"Red"}, blue:{c:[3600,2037],a:[3270,1720],label:"Blue"}};
+const LAUNCH_R = 865, HIT_R = 95, MATCH = 150;
+const XY = p => [p[0]*36, p[1]*20.37];
+
+/* ================= STATE ================= */
+const blank = () => ({team:0, steps:[], boxes:{A:null,B:null,C:null}, tokens:6});
+let S = load("fll-state") || blank();
+let history = load("fll-history") || [];
+function load(k){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+function save(){ try{ localStorage.setItem("fll-state", JSON.stringify(S)); localStorage.setItem("fll-history", JSON.stringify(history)); }catch(e){} }
+
+const $ = id => document.getElementById(id);
+const team = () => TEAMS[S.team] || TEAMS[0];
+const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission" && !s.revisit) p[s.id]=s.points; }); return p; };
+const missionPos = id => { if(MISSIONS[id].pos) return XY(MISSIONS[id].pos); const b = Object.keys(S.boxes).find(k=>S.boxes[k]===id); return b ? XY(BOXES[b]) : null; };
+const stepPos = s => s.type==="launch" ? LAUNCH[s.side].a : missionPos(s.id);
+const mLabel = id => `M${String(id).padStart(2,"0")} ${MISSIONS[id].name}`;
+
+/* ================= TEAM ================= */
+$("team").innerHTML = TEAMS.map((t,i)=>`<option value="${i}">${t.short}</option>`).join("");
+$("team").value = S.team;
+$("team").onchange = e => { S.team = +e.target.value; save(); render(); };
+
+/* ================= MAP ================= */
+const svg = $("svg");
+svg.addEventListener("click", e => {
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const d = (a) => Math.hypot(p.x-a[0], (p.y-a[1]));
+  for(const k of Object.keys(BOXES)) if(d(XY(BOXES[k])) < HIT_R) return clickBox(k);
+  for(const id of ORDER) if(MISSIONS[id].pos && d(XY(MISSIONS[id].pos)) < HIT_R) return clickMission(+id);
+  for(const m of M10) if(d(XY(m)) < HIT_R) return toast("Mission 10 Fragile Microhabitats: don't disturb it! You keep 20 points if it stays safe.");
+  for(const side of ["red","blue"]) if(d(LAUNCH[side].c) < LAUNCH_R) return clickLaunch(side);
+});
+
+function clickLaunch(side){
+  const L = LAUNCH[side].label;
+  if(!S.steps.length){
+    modal(`<h3>Start in the ${L} launch area?</h3><p>This will be your launch starting point.</p>
+      <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn ${side}" data-ok>Yes, start here</button></div>`,
+      m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"launch",side}); close(); commit(); });
+    return;
+  }
+  const last = S.steps[S.steps.length-1];
+  const msg = last.type==="launch" ? `Move from the ${LAUNCH[last.side].label} launch area to the ${L} launch area?` : `Return the robot to the ${L} launch area?`;
+  modal(`<h3>${msg}</h3><p>This draws a red line and starts a new run from here.</p>
+    <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn ${side}" data-ok>Yes</button></div>`,
+    m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"launch",side}); close(); commit(); });
+}
+
+function needStart(){ if(!S.steps.length){ toast("First click the red or blue launch area to pick your starting point."); return true; } return false; }
+
+function clickMission(id, box){
+  if(needStart()) return;
+  const cur = planned()[id];
+  if(cur !== undefined){
+    modal(`<h3>${mLabel(id)}</h3><p>Already in your plan for <b>${cur} points</b>.</p>
+      <div class="opts"><button class="opt" data-pass>Route through<small>no extra points</small></button>
+      <button class="opt" data-change>Change points<small>keep it in place</small></button></div>
+      <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`, m => {
+        m.querySelector("[data-pass]").onclick = () => { S.steps.push({type:"mission",id,points:0,revisit:true}); close(); commit(); };
+        m.querySelector("[data-change]").onclick = () => askPoints(id, pts => { S.steps.forEach(s=>{ if(s.type==="mission"&&s.id===id&&!s.revisit) s.points=pts; }); commit(); });
+      });
+    return;
+  }
+  askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box}); commit(); }, box);
+}
+
+function askPoints(id, done, box){
+  const o = MISSIONS[id].opts;
+  modal(`<h3>${mLabel(id)}</h3><p>How many points do you plan to earn here?</p>
+    <div class="opts">${o.map(v=>`<button class="opt" data-v="${v}">${v}<small>points</small></button>`).join("")}</div>
+    <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`,
+    m => m.querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
+      if(box) S.boxes[box] = id;
+      close(); done(+b.dataset.v);
+    }));
+}
+
+function clickBox(k){
+  if(needStart()) return;
+  if(S.boxes[k]) return clickMission(S.boxes[k]);
+  const free = [13,14,15].filter(id => !Object.values(S.boxes).includes(id));
+  modal(`<h3>Which mission goes in this white box?</h3><p>Missions 13, 14 and 15 can go in any white box.</p>
+    <div class="opts">${free.map(id=>`<button class="opt" data-m="${id}">${id}<small>${MISSIONS[id].name}</small></button>`).join("")}</div>
+    <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`,
+    m => m.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { close(); clickMission(+b.dataset.m, k); }));
+}
+
+$("undoBtn").onclick = () => {
+  const s = S.steps.pop(); if(!s) return;
+  if(s.box && !S.steps.some(x=>x.type==="mission"&&x.id===s.id)) S.boxes[s.box] = null;
+  commit();
+};
+$("clearBtn").onclick = () => modal(`<h3>Clear the whole plan?</h3><p>The route, points and white-box choices will be removed for ${esc(team().full)}.</p>
+  <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn red" data-ok>Clear plan</button></div>`,
+  m => m.querySelector("[data-ok]").onclick = () => { S.steps=[]; S.boxes={A:null,B:null,C:null}; S.tokens=6; close(); commit(); });
+
+function commit(){ save(); render(); }
+
+/* ================= RENDER ================= */
+function drawMap(){
+  const p = planned();
+  let h = `<defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2f7ff0"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e0383b"/></marker>
+    <filter id="gl"><feGaussianBlur stdDeviation="10"/></filter></defs>`;
+  // launch highlight
+  const first = S.steps[0];
+  ["red","blue"].forEach(side => {
+    const on = S.steps.some(s=>s.type==="launch"&&s.side===side);
+    h += `<path d="M${LAUNCH[side].c[0]} ${2037-LAUNCH_R} A${LAUNCH_R} ${LAUNCH_R} 0 0 ${side==="red"?1:0} ${side==="red"?LAUNCH_R:3600-LAUNCH_R} 2037 L${LAUNCH[side].c[0]} 2037Z"
+      fill="${side==="red"?"#e0383b":"#2f7ff0"}" fill-opacity="${on?0.16:0.04}" stroke="none"/>`;
+  });
+  if(first) h += `<g transform="translate(${LAUNCH[first.side].a})"><circle r="58" fill="${first.side==="red"?"#e0383b":"#2f7ff0"}" stroke="#fff" stroke-width="8"/><text y="20" text-anchor="middle" font-size="56" font-weight="800" fill="#fff" font-family="Chakra Petch,sans-serif">GO</text></g>`;
+  // planned-mission glow rings
+  Object.keys(p).forEach(id => { const c = missionPos(+id); if(!c) return;
+    h += `<circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="16" filter="url(#gl)"/><circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="7"/>`; });
+  // route segments
+  const seen = {};
+  for(let i=1;i<S.steps.length;i++){
+    const a = stepPos(S.steps[i-1]), b = stepPos(S.steps[i]); if(!a||!b) continue;
+    const red = S.steps[i].type==="launch";
+    const key = [a,b].map(String).sort().join("|"); const k = seen[key] = (seen[key]||0)+1;
+    const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+    const off = (k-1)*34*(k%2?1:-1); const ox=-uy*off, oy=ux*off;
+    const sa = S.steps[i-1].type==="launch"?70:105, sb = S.steps[i].type==="launch"?70:118;
+    const x1=a[0]+ux*sa+ox, y1=a[1]+uy*sa+oy, x2=b[0]-ux*sb+ox, y2=b[1]-uy*sb+oy;
+    const col = red?"#e0383b":"#2f7ff0";
+    h += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="26" stroke-linecap="round" opacity=".85"/>
+      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="15" stroke-linecap="round" marker-end="url(#${red?"ar":"ab"})"/>`;
+    const mx=(x1+x2)/2, my=(y1+y2)/2;
+    h += `<g transform="translate(${mx} ${my})"><circle r="34" fill="${col}" stroke="#fff" stroke-width="6"/><text y="13" text-anchor="middle" font-size="38" font-weight="800" fill="#fff" font-family="Chakra Petch,sans-serif">${i}</text></g>`;
+  }
+  // white box labels
+  Object.entries(S.boxes).forEach(([k,id]) => { if(!id) return; const c = XY(BOXES[k]);
+    h += `<text x="${c[0]}" y="${c[1]+38}" text-anchor="middle" font-size="108" font-weight="700" fill="#c4262b" font-family="Chakra Petch,sans-serif">${id}</text>`; });
+  // point chips
+  Object.entries(p).forEach(([id,pts]) => { const c = missionPos(+id); if(!c) return;
+    const y = c[1] > 1600 ? c[1]-170 : c[1]+150, x = Math.min(Math.max(c[0],95),3505);
+    h += `<g transform="translate(${x} ${y})"><rect x="-88" y="-44" width="176" height="80" rx="40" fill="#0b1a14" stroke="#7dffb2" stroke-width="6"/><text y="16" text-anchor="middle" font-size="50" font-weight="800" fill="#7dffb2" font-family="Chakra Petch,sans-serif">+${pts}</text></g>`; });
+  // invisible hover titles
+  ORDER.forEach(id => { if(!MISSIONS[id].pos) return; const c = XY(MISSIONS[id].pos);
+    h += `<circle cx="${c[0]}" cy="${c[1]}" r="${HIT_R}" fill="transparent" style="cursor:pointer"><title>${mLabel(id)}</title></circle>`; });
+  Object.keys(BOXES).forEach(k => { const c = XY(BOXES[k]);
+    h += `<circle cx="${c[0]}" cy="${c[1]}" r="${HIT_R}" fill="transparent" style="cursor:pointer"><title>${S.boxes[k]?mLabel(S.boxes[k]):"White box: choose Mission 13, 14 or 15"}</title></circle>`; });
+  M10.forEach(m => { const c = XY(m); h += `<circle cx="${c[0]}" cy="${c[1]}" r="${HIT_R}" fill="transparent"><title>M10 Fragile Microhabitats (avoid)</title></circle>`; });
+  svg.innerHTML = h;
+}
+
+
+function render(){
+  const p = planned(); const mSum = Object.values(p).reduce((a,b)=>a+b,0);
+  $("plannedTotal").textContent = 90 + mSum;
+  $("scoreRows").innerHTML = `<span class="sub">Precision tokens (keep 6)</span><span class="v">50</span>
+    <span class="sub">Equipment inspection</span><span class="v">20</span>
+    <span class="sub">M10 Fragile Microhabitats</span><span class="v">20</span><hr>` +
+    (ORDER.filter(id=>p[id]!==undefined).map(id=>`<span>${mLabel(id)}</span><span class="v">${p[id]}</span>`).join("") || `<span class="sub" style="grid-column:1/-1">No missions planned yet.</span>`);
+  // timeline
+  let run=0, html="";
+  S.steps.forEach((s,i) => {
+    if(s.type==="launch"){ run++; html += `<li class="run">${i===0?"Run 1 · start":"Run "+run+" · back to base"} <span class="chip ${s.side}">${LAUNCH[s.side].label} launch</span></li>`; }
+    else html += `<li><span class="n">${i}</span><span>${mLabel(s.id)}</span><span class="pts">${s.revisit?"pass":"+"+s.points}</span></li>`;
+  });
+  $("timeline").innerHTML = html || `<li class="empty">Your route will appear here, stop by stop.</li>`;
+  // tokens
+  $("pips").innerHTML = Array.from({length:6},(_,i)=>`<span class="pip ${i<S.tokens?"":"lost"}"></span>`).join("");
+  $("tokCount").textContent = S.tokens; $("tokPts").textContent = PREC[S.tokens];
+  $("precisionBtn").disabled = S.tokens<=0; $("tokUndo").disabled = S.tokens>=6;
+  // hint
+  const last = S.steps[S.steps.length-1];
+  $("hintText").textContent = !last ? "Click the red or blue launch area to start planning." :
+    last.type==="launch" ? `Robot at ${LAUNCH[last.side].label} launch. Click a mission to head out.` :
+    `Last stop: ${mLabel(last.id)}. Click the next mission, or a launch area to return.`;
+  drawMap(); renderHistory(); renderReport();
+}
+
+/* ================= PRECISION ================= */
+$("precisionBtn").onclick = () => { if(S.tokens>0){ S.tokens--; beep(220,.25,"sawtooth",.5); commit(); } };
+$("tokUndo").onclick = () => { if(S.tokens<6){ S.tokens++; commit(); } };
+
+/* ================= TIMER ================= */
+let remain = MATCH, tick = null, counting = false, running=false;
+const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+function showClock(){ const c=$("clock"); c.textContent = fmt(remain); c.className = remain===0?"done":remain<=30?"warn":""; }
+let AC;
+function beep(f,d,type="square",vol=.9){ try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume();
+  const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.value=f; g.gain.setValueAtTime(vol,AC.currentTime); g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);
+  o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime+d); }catch(e){} }
+function say(t){ try{ const u = new SpeechSynthesisUtterance(t); u.volume=1; u.rate=1; u.pitch=.85;
+  const v = speechSynthesis.getVoices().find(v=>/en[-_]US/i.test(v.lang)); if(v) u.voice=v; speechSynthesis.speak(u); }catch(e){} }
+
+$("startBtn").onclick = () => {
+  if(counting||running) return;
+  if(remain===0) remain = MATCH;
+  counting = true; $("startBtn").disabled = true;
+  try{ speechSynthesis.cancel(); }catch(e){}
+  const ov = document.createElement("div"); ov.id="count"; document.body.appendChild(ov);
+  const seq = ["3","2","1","LEGO!"];
+  seq.forEach((w,i) => setTimeout(() => {
+    ov.innerHTML = `<span class="${i===3?"lego":""}">${w}</span>`;
+    say(i===3?"LEGO!":w); beep(i===3?880:520, i===3?.6:.25);
+    if(i===3) setTimeout(()=>{ ov.remove(); counting=false; run(); }, 800);
+  }, i*1000));
+};
+function run(){
+  running = true; $("pauseBtn").disabled=false; $("pauseBtn").textContent="Pause"; $("startBtn").disabled=true;
+  const end = Date.now() + remain*1000;
+  tick = setInterval(() => {
+    const r = Math.max(0, Math.ceil((end-Date.now())/1000));
+    if(r!==remain){ remain=r; showClock(); if(remain<=3 && remain>0) beep(660,.15); }
+    if(remain===0){ stop(); beep(180,1.2,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
+  }, 100);
+}
+function stop(){ clearInterval(tick); running=false; $("pauseBtn").disabled = remain===0; $("startBtn").disabled=false; }
+$("pauseBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; $("pauseBtn").disabled=false; $("startBtn").disabled=true; } else if(remain>0){ run(); } };
+$("resetBtn").onclick = () => { stop(); remain=MATCH; showClock(); $("pauseBtn").disabled=true; $("pauseBtn").textContent="Pause"; };
+$("scoreBtn").onclick = () => openAdjust();
+
+/* ================= ADJUSTMENTS ================= */
+let lastResult = null;
+function openAdjust(){
+  const p = planned();
+  const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts]}));
+  rows.push({key:"prec", label:"Precision tokens remaining", plan:50, isTok:true, opts:[0,1,2,3,4,5,6], def:S.tokens});
+  rows.push({key:"insp", label:"Equipment inspection", plan:20, opts:[0,20]});
+  rows.push({key:"m10", label:"M10 Fragile Microhabitats", plan:20, opts:[20,10,0], names:{20:"No damage (20)",10:"Reduced by 10 (10)",0:"Reduced by 20 (0)"}});
+  const sel = r => `<select id="adj-${r.key}" data-k="${r.key}">${r.opts.map(v=>{
+    const d = r.isTok ? r.def : (r.plan);
+    const txt = r.isTok ? `${v} left → ${PREC[v]} pts` : r.names ? r.names[v] : v;
+    return `<option value="${v}" ${v===d?"selected":""}>${txt}</option>`;}).join("")}</select>`;
+  modal(`<h3>Time! Do you need to make any score adjustments?</h3>
+    <p>${esc(team().full)} · Each mission starts at what you planned. Change anything that went differently on the field.</p>
+    <div class="totals"><div><span>Planned</span><b id="tPlan">0</b></div><div><span>Actual</span><b id="tAct" style="color:var(--glow)">0</b></div><div><span>Difference</span><b id="tDiff">0</b></div></div>
+    <div class="tablewrap"><table class="adj"><thead><tr><th>Scoring item</th><th>Planned</th><th>Actual result</th><th class="num">Points</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr id="row-${r.key}"><td>${r.label}</td><td class="num">${r.plan}</td><td>${sel(r)}</td><td class="num" id="pts-${r.key}"></td></tr>`).join("")}</tbody></table></div>
+    <div class="mfoot"><button class="btn" data-x>Back to map</button><button class="btn go" data-save>Save final score</button></div>`, m => {
+      const calc = () => {
+        let plan=0, act=0;
+        rows.forEach(r => { const v = +m.querySelector("#adj-"+r.key).value; const pts = r.isTok ? PREC[v] : v;
+          m.querySelector("#pts-"+r.key).textContent = pts; plan += r.plan; act += pts;
+          m.querySelector("#row-"+r.key).classList.toggle("changed", pts !== r.plan); r.actual = pts; r.raw = v; });
+        m.querySelector("#tPlan").textContent = plan; m.querySelector("#tAct").textContent = act;
+        const d = act-plan; m.querySelector("#tDiff").textContent = (d>0?"+":"")+d;
+        return {plan, act};
+      };
+      m.querySelectorAll("select").forEach(s => s.onchange = calc); calc();
+      m.querySelector("[data-save]").onclick = () => {
+        const {plan, act} = calc();
+        lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act,
+          items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
+          route: routeText() };
+        history.unshift(lastResult); close(); commit(); toast(`Saved: ${team().full} scored ${act} (planned ${plan}).`);
+      };
+    }, true);
+}
+function routeText(){ return S.steps.map(s => s.type==="launch" ? `${LAUNCH[s.side].label} launch` : `M${s.id}${s.revisit?" (pass)":" +"+s.points}`).join(" → "); }
+
+/* ================= HISTORY / REPORT ================= */
+function renderHistory(){
+  $("history").innerHTML = history.length ? history.map(h=>`<div><b>${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span><small>${esc(h.date)}</small></div>`).join("")
+    : `<span class="empty">When the timer ends and you save a final score, it is listed here.</span>`;
+}
+function renderReport(){
+  const p = planned(), r = lastResult && lastResult.team===team().full ? lastResult : null;
+  const items = r ? r.items : [
+    ...ORDER.map(id=>({label:mLabel(id),planned:p[id]||0})),
+    {label:"Precision tokens",planned:50},{label:"Equipment inspection",planned:20},{label:"M10 Fragile Microhabitats",planned:20}];
+  $("report").innerHTML = `<h1>${esc(team().full)}</h1><div>FIRST LEGO League · BioGlow · ${esc(r ? r.date : new Date().toLocaleString())}</div>
+    <p><b>Planned score:</b> ${r ? r.planned : 90+Object.values(p).reduce((a,b)=>a+b,0)}${r ? ` &nbsp; <b>Actual score:</b> ${r.actual}` : ""}</p>
+    <table><thead><tr><th>Scoring item</th><th class="num">Planned</th>${r?'<th class="num">Actual</th>':""}</tr></thead><tbody>
+    ${items.map(i=>`<tr><td>${esc(i.label)}${i.tokens!==undefined?` (${i.tokens} left)`:""}</td><td class="num">${i.planned}</td>${r?`<td class="num">${i.actual}</td>`:""}</tr>`).join("")}
+    </tbody></table><p><b>Route:</b> ${esc(routeText()) || "none"}</p>`;
+}
+$("printBtn").onclick = () => { renderReport(); window.print(); };
+$("csvBtn").onclick = () => {
+  if(!history.length) return toast("No saved matches yet.");
+  const labels = history[0].items.map(i=>i.label);
+  const q = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines = [["Team","Date","Planned","Actual",...labels.map(l=>l+" (actual)"),"Route"].map(q).join(",")];
+  history.forEach(h => lines.push([h.team,h.date,h.planned,h.actual,...h.items.map(i=>i.actual),h.route].map(q).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));
+  a.download = "bioglow-scores.csv"; document.body.appendChild(a); a.click(); a.remove();
+};
+$("histClear").onclick = () => modal(`<h3>Clear all saved matches?</h3><p>This removes every saved score on this device.</p>
+  <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn red" data-ok>Clear history</button></div>`,
+  m => m.querySelector("[data-ok]").onclick = () => { history=[]; lastResult=null; close(); commit(); });
+
+/* ================= UI HELPERS ================= */
+function modal(html, wire, wide){
+  $("modalRoot").innerHTML = `<div class="scrim"><div class="modal ${wide?"wide":""}" role="dialog" aria-modal="true">${html}</div></div>`;
+  const m = $("modalRoot").querySelector(".modal");
+  m.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
+  $("modalRoot").querySelector(".scrim").onclick = e => { if(e.target.classList.contains("scrim")) close(); };
+  wire && wire(m);
+  const f = m.querySelector(".opt") || m.querySelector("[data-ok]") || m.querySelector("select") || m.querySelector("button"); f && f.focus({preventScroll:true}); m.scrollTop = 0;
+}
+function close(){ $("modalRoot").innerHTML = ""; }
+document.addEventListener("keydown", e => { if(e.key==="Escape") close(); });
+let tt; function toast(t){ let el=document.querySelector(".toast"); if(!el){ el=document.createElement("div"); el.className="toast"; document.body.appendChild(el); }
+  el.textContent=t; clearTimeout(tt); tt=setTimeout(()=>el.remove(),3200); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+try{ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => {}; }catch(e){}
+
+showClock(); render();
+})();
+</script>
+
+</body>
+</html>
