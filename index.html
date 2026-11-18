@@ -67,7 +67,7 @@ button{cursor:pointer}
 .tlhead h2{font-family:var(--display);font-size:1rem;letter-spacing:.06em;text-transform:uppercase;margin:0;color:var(--muted)}
 .tlhead span{font-size:.8rem;color:var(--muted)}
 .tlwrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
-.tlwrap svg{display:block;width:100%;min-width:900px;height:auto}
+.tlwrap svg{display:block;width:100%;min-width:760px;height:auto}
 .legend i{display:inline-block;width:26px;height:5px;border-radius:3px;vertical-align:middle;margin-right:6px}
 
 .side{display:flex;flex-direction:column;gap:14px}
@@ -195,7 +195,7 @@ button{cursor:pointer}
         <span><i style="background:var(--red)"></i>Mission → launch, launch → launch</span>
         <span>↑ robot leaves a launch area · ↓ robot returns</span>
       </div>
-      <div class="tlhead"><h2>Match timeline</h2><span>Times come from the match clock. Start the timer to record them.</span></div>
+      <div class="tlhead"><h2>Match timeline</h2><span>↑ leaves launch · ↓ returns · green ↓ precision token · circles are mission points. Times come from the match clock.</span></div>
       <div class="tlwrap" id="matchTimeline"></div>
     </div>
 
@@ -429,44 +429,37 @@ function drawMap(){
   svg.innerHTML = h;
 }
 
-/* Match timeline: launch arrows, mission circles and precision tokens placed by match time (0:00–2:30). */
+/* Match timeline: one line from 0:00 to 2:30. Arrow tips touch the line; mission circles sit on it. */
 function timelineSVG(W=3600){
-  const X0 = 330, X1 = W-90, xs = t => X0 + (Math.min(Math.max(t||0,0),MATCH)/MATCH)*(X1-X0);
+  const X0 = 140, X1 = W-140, xs = t => X0 + (Math.min(Math.max(t||0,0),MATCH)/MATCH)*(X1-X0);
   const F = "Chakra Petch, Arial, sans-serif";
-  // greedy row stacking so markers that happen close together don't overlap
-  const stack = (items, gap) => { const rows=[]; items.forEach(it => {
-    let r = rows.findIndex(last => it.x - last >= gap); if(r<0){ r=rows.length; rows.push(0); } rows[r]=it.x; it.row=r; }); return Math.max(rows.length,1); };
-  const launches = S.steps.filter(s=>s.type!=="mission").map(s=>({x:xs(s.t), s}));
-  const missions = S.steps.filter(s=>s.type==="mission").map(s=>({x:xs(s.t), s}));
-  const precs = S.prec.map(t=>({x:xs(t), t}));
-  [launches, missions, precs].forEach(a=>a.sort((p,q)=>p.x-q.x));
-  const lr = stack(launches, 110), mr = stack(missions, 130), pr = stack(precs, 110);
-  const LH = 150, MH = 190, PH = 150;
-  const lanes = [
-    {name:"Launch", h: 40 + lr*LH, items:launches, kind:"launch"},
-    {name:"Missions", h: 40 + mr*MH, items:missions, kind:"mission"},
-    {name:"Precision", h: 40 + pr*PH, items:precs, kind:"prec"}];
-  const TOP = 20, AX = 90; let y = TOP;
-  lanes.forEach(l => { l.y = y; y += l.h; });
-  const H = y + AX;
+  const LY = 230, H = 540, R = 46, AL = 120; // line y, height, circle radius, arrow length
+  // arrow whose tip sits on the line: dir -1 = points up (drawn below line), +1 = points down (drawn above line)
+  const arrow = (x, dir, col) => {
+    const tip = LY, base = LY - dir*AL, head = LY - dir*52;
+    return `<path d="M${x} ${tip}L${x+40} ${head}L${x+15} ${head}L${x+15} ${base}L${x-15} ${base}L${x-15} ${head}L${x-40} ${head}Z"
+      fill="${col}" stroke="#fff" stroke-width="5" stroke-linejoin="round"/>`;
+  };
   let g = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
     <rect width="${W}" height="${H}" fill="#0b1a14"/>`;
-  lanes.forEach((l,i) => {
-    g += `<rect x="0" y="${l.y}" width="${W}" height="${l.h}" fill="${i%2?"#0f2219":"#11261d"}"/>
-      <text x="40" y="${l.y + l.h/2 + 18}" font-family="${F}" font-size="52" font-weight="700" fill="#9fbfae">${l.name.toUpperCase()}</text>`;
-  });
   for(let t=0;t<=MATCH;t+=15){ const x = xs(t);
-    g += `<line x1="${x}" y1="${TOP}" x2="${x}" y2="${y}" stroke="#2a4a3b" stroke-width="${t%30?3:5}"/>
-      <text x="${x}" y="${y+66}" text-anchor="middle" font-family="${F}" font-size="46" font-weight="700" fill="#9fbfae">${fmt(t)}</text>`; }
-  g += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="#9fbfae" stroke-width="5"/>`;
-  lanes[0].items.forEach(it => { const s = it.s, up = s.type==="out", cy = lanes[0].y + 20 + LH/2 + it.row*LH;
-    g += `<g transform="translate(${it.x} ${cy})"><path d="${arrowPath(up,1.15)}" fill="${LAUNCH[s.side].col}" stroke="#fff" stroke-width="6" stroke-linejoin="round"/></g>`; });
-  lanes[1].items.forEach(it => { const s = it.s, cy = lanes[1].y + 20 + 70 + it.row*MH, on = s.points>0;
-    g += `<g transform="translate(${it.x} ${cy})"><circle r="56" fill="${on?"#7dffb2":"#2a4a3b"}" stroke="#fff" stroke-width="6"/>
-      <text y="17" text-anchor="middle" font-family="${F}" font-size="50" font-weight="700" fill="${on?"#06281a":"#e9f5ee"}">${s.points}</text>
-      <text y="104" text-anchor="middle" font-family="${F}" font-size="40" font-weight="700" fill="#e9f5ee">M${String(s.id).padStart(2,"0")}</text></g>`; });
-  lanes[2].items.forEach(it => { const cy = lanes[2].y + 20 + PH/2 + it.row*PH;
-    g += `<g transform="translate(${it.x} ${cy})"><path d="${arrowPath(false,1.15)}" fill="${GREEN}" stroke="#fff" stroke-width="6" stroke-linejoin="round"/></g>`; });
+    g += `<line x1="${x}" y1="${LY-150}" x2="${x}" y2="${LY+150}" stroke="#1f3a2d" stroke-width="3"/>
+      <line x1="${x}" y1="${LY-18}" x2="${x}" y2="${LY+18}" stroke="#9fbfae" stroke-width="5"/>
+      <text x="${x}" y="${H-40}" text-anchor="middle" font-family="${F}" font-size="46" font-weight="700" fill="#9fbfae">${fmt(t)}</text>`; }
+  g += `<line x1="${X0}" y1="${LY}" x2="${X1}" y2="${LY}" stroke="#e9f5ee" stroke-width="8" stroke-linecap="round"/>`;
+  // missions: circles centered on the line, mission number underneath
+  // when circles are close together, the mission labels drop to a second row so they stay readable
+  const ms = S.steps.filter(s=>s.type==="mission").map(s=>({s, x:xs(s.t)})).sort((a,b)=>a.x-b.x), rowEnd = [];
+  ms.forEach(m => { let r = rowEnd.findIndex(e => m.x - e >= 100); if(r<0){ r = rowEnd.length; rowEnd.push(0); } rowEnd[r] = m.x; m.row = r; });
+  ms.forEach(({s,x,row}) => { const on = s.points>0;
+    g += `<circle cx="${x}" cy="${LY}" r="${R}" fill="${on?"#7dffb2":"#2a4a3b"}" stroke="#fff" stroke-width="6"/>
+      <text x="${x}" y="${LY+16}" text-anchor="middle" font-family="${F}" font-size="44" font-weight="700" fill="${on?"#06281a":"#e9f5ee"}">${s.points}</text>
+      ${row ? `<line x1="${x}" y1="${LY+R+4}" x2="${x}" y2="${LY+R+50+row*44-34}" stroke="#9fbfae" stroke-width="3"/>` : ""}
+      <text x="${x}" y="${LY+R+50+row*44}" text-anchor="middle" font-family="${F}" font-size="38" font-weight="700" fill="#e9f5ee">M${String(s.id).padStart(2,"0")}</text>`; });
+  // launch arrows: leaving = up arrow below the line, returning = down arrow above the line
+  S.steps.filter(s=>s.type!=="mission").forEach(s => { g += arrow(xs(s.t), s.type==="out" ? -1 : 1, LAUNCH[s.side].col); });
+  // precision tokens: green down arrows above the line
+  S.prec.forEach(t => { g += arrow(xs(t), 1, GREEN); });
   return {svg: g + `</svg>`, W, H};
 }
 
@@ -661,7 +654,7 @@ async function buildImage(r){
   let y = HEAD + MH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("MATCH TIMELINE", 90, y);
   g.font=`600 36px ${B}`; g.textAlign="right";
-  g.fillText("↑ leaves launch   ↓ returns to launch   ● mission points   green ↓ precision token used", W-90, y); g.textAlign="left";
+  g.fillText("↑ red/blue: leaves launch   ↓ red/blue: returns to launch   ● mission points   green ↓ precision token", W-90, y); g.textAlign="left";
   const tUrl = URL.createObjectURL(new Blob([TL.svg],{type:"image/svg+xml"}));
   try{ g.drawImage(await loadImg(tUrl), 0, y+40, W, TL.H); } finally { URL.revokeObjectURL(tUrl); }
   // breakdown
