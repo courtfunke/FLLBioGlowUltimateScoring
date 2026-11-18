@@ -93,6 +93,7 @@ button{cursor:pointer}
 .timeline .n{font-family:var(--display);font-weight:700;color:var(--muted);text-align:right}
 .timeline .pts{font-weight:800;font-variant-numeric:tabular-nums}
 .timeline .pts.zero{color:var(--muted)}
+.timeline .pts .mt,.adj .mt{display:block;font-size:.72rem;font-weight:600;color:var(--muted);text-align:right}
 .timeline .stop{cursor:pointer}.timeline .stop:hover{background:var(--panel-2)}
 .timeline .try{color:var(--gold);font-weight:700;font-size:.75rem}
 .timeline .run{display:flex;justify-content:space-between;font-family:var(--display);letter-spacing:.06em;font-size:.78rem;text-transform:uppercase;padding-top:10px;border:0}
@@ -132,6 +133,11 @@ button{cursor:pointer}
 #count span{font-family:var(--display);font-weight:700;font-size:min(34vw,320px);color:var(--glow);text-shadow:0 0 50px rgba(125,255,178,.7);animation:pop .9s ease-out both}
 #count span.lego{color:var(--gold);font-size:min(22vw,220px)}
 @keyframes pop{from{transform:scale(1.6);opacity:0}30%{opacity:1}to{transform:scale(1);opacity:1}}
+.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:65;pointer-events:none}
+.flash span{font-family:var(--display);font-weight:700;font-size:min(11vw,120px);color:#fff;padding:.15em .6em;border-radius:24px;border:6px solid #fff;letter-spacing:.04em;animation:flash .9s ease-out both}
+.flash.red span{background:var(--red)}.flash.blue span{background:var(--blue)}
+@keyframes flash{0%{transform:scale(.7);opacity:0}15%{transform:scale(1.05);opacity:1}70%{opacity:1}100%{transform:scale(1);opacity:0}}
+@media (prefers-reduced-motion:reduce){.flash span{animation:none}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--glow);padding:10px 16px;border-radius:10px;z-index:70;font-weight:600;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:reduce){#count span{animation:none}}
 
@@ -141,6 +147,7 @@ button{cursor:pointer}
 .hist small{color:var(--muted);grid-column:1/-1}
 .hist .sent{color:var(--glow)}
 .sheetnote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.9rem;color:var(--muted)}
+.sheetnote.hs{border-color:var(--gold);background:var(--gold);color:#2a1d00;font-weight:800;font-size:1rem}
 .sheetnote.ok{border-color:var(--glow);color:var(--glow);font-weight:700}
 .sheetnote.bad{border-color:var(--gold);color:var(--fg);background:rgba(255,209,102,.08)}
 .sheetnote code{color:var(--gold)}
@@ -153,7 +160,12 @@ button{cursor:pointer}
 @media print{
   :root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--panel:#fff}
   body{background:#fff;color:#000;padding:0}
-  .deck,.side,.hint,.legend,.scrim,#count,.toast{display:none!important}
+  .deck,.side,.hint,.legend,.scrim,#count,.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:65;pointer-events:none}
+.flash span{font-family:var(--display);font-weight:700;font-size:min(11vw,120px);color:#fff;padding:.15em .6em;border-radius:24px;border:6px solid #fff;letter-spacing:.04em;animation:flash .9s ease-out both}
+.flash.red span{background:var(--red)}.flash.blue span{background:var(--blue)}
+@keyframes flash{0%{transform:scale(.7);opacity:0}15%{transform:scale(1.05);opacity:1}70%{opacity:1}100%{transform:scale(1);opacity:0}}
+@media (prefers-reduced-motion:reduce){.flash span{animation:none}}
+.toast{display:none!important}
   .main{display:block}.mapcard{border:0;padding:0}
   #report{display:block;font-family:var(--body);color:#000;page-break-before:always}
   #report h1{font-family:var(--display);margin:0 0 4px}
@@ -219,11 +231,6 @@ button{cursor:pointer}
     </div>
 
     <aside class="side">
-      <div class="card">
-        <h2>Planned score</h2>
-        <div class="big" id="plannedTotal">90</div>
-        <div class="rows" id="scoreRows"></div>
-      </div>
       <div class="card">
         <h2>Route steps</h2><p class="empty" style="margin:-4px 0 8px;font-size:.8rem">Click a mission stop to change its points.</p>
         <ol class="timeline" id="timeline"></ol>
@@ -299,6 +306,9 @@ const team = () => TEAMS[S.team] || TEAMS[0];
 const tokens = () => Math.max(0, 6 - S.prec.length);
 const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission") p[s.id]=Math.max(p[s.id]??0, s.points||0); }); return p; };
 const attempts = id => S.steps.filter(s=>s.type==="mission"&&s.id===id);
+// Time on a mission = from clicking the mission to clicking its score, added up over every attempt.
+const stepTime = s => Math.max(0, (s.ts ?? s.t) - s.t);
+const missionTime = id => { const a = attempts(id); return a.length ? a.reduce((sum,s)=>sum+stepTime(s),0) : null; };
 const missionPos = id => { if(MISSIONS[id].pos) return XY(MISSIONS[id].pos); const b = Object.keys(S.boxes).find(k=>S.boxes[k]===id); return b ? XY(BOXES[b]) : null; };
 const stepPos = s => s.type==="mission" ? missionPos(s.id) : LAUNCH[s.side].a;
 const mLabel = id => `M${String(id).padStart(2,"0")} ${MISSIONS[id].name}`;
@@ -331,13 +341,7 @@ svg.addEventListener("click", e => {
 function clickUp(side){
   const L = LAUNCH[side].label, t = elapsed();
   if(robotOut()) return toast(`The robot is already out. Click a ↓ arrow when it comes back to a launch area.`);
-  if(!S.steps.length){
-    modal(`<h3>Start in the ${L} launch area?</h3><p>This marks the robot leaving ${L} launch at ${fmt(t)}.</p>
-      <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn ${side}" data-ok>Yes, start here</button></div>`,
-      m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"out",side,t}); close(); commit(); });
-    return;
-  }
-  S.steps.push({type:"out",side,t}); commit(); toast(`${L} ↑ robot leaves at ${fmt(t)}`);
+  S.steps.push({type:"out",side,t}); commit(); flash(side, `${L.toUpperCase()} LAUNCH ↑`);
 }
 function clickDown(side){
   const t = elapsed();
@@ -353,7 +357,7 @@ function needOut(){
 
 function clickMission(id, box, t){
   if(t === undefined){ if(needOut()) return; t = elapsed(); }
-  askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box,t}); commit(); }, box);
+  askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box,t,ts:elapsed()}); commit(); }, box);
 }
 
 function askPoints(id, done, box, editIdx){
@@ -530,19 +534,13 @@ function renderStats(){
 }
 
 function render(){
-  const p = planned(); const mSum = Object.values(p).reduce((a,b)=>a+b,0);
-  $("plannedTotal").textContent = 90 + mSum;
-  $("scoreRows").innerHTML = `<span class="sub">Precision tokens (keep 6)</span><span class="v">50</span>
-    <span class="sub">Equipment inspection</span><span class="v">20</span>
-    <span class="sub">M10 Fragile Microhabitats</span><span class="v">20</span><hr>` +
-    (ORDER.filter(id=>p[id]!==undefined).map(id=>`<span>${mLabel(id)}</span><span class="v">${p[id]}</span>`).join("") || `<span class="sub" style="grid-column:1/-1">No missions planned yet.</span>`);
   // route steps list
   let run=0, html="";
   S.steps.forEach((s,i) => {
     if(s.type==="out"){ run++; html += `<li class="run"><span>${fmt(s.t)} · Run ${run}</span><span class="chip ${s.side}">↑ leaves ${LAUNCH[s.side].label}</span></li>`; }
     else if(s.type==="in"){ html += `<li class="run"><span>${fmt(s.t)}</span><span class="chip ${s.side}">↓ back to ${LAUNCH[s.side].label}</span></li>`; }
     else { const at = attempts(s.id), k = at.indexOf(s)+1;
-      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${fmt(s.t)}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}</span></li>`; }
+      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${fmt(s.t)}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}<small class="mt">${dur(stepTime(s))}</small></span></li>`; }
   });
   $("timeline").innerHTML = html || `<li class="empty">Your route will appear here, stop by stop.</li>`;
   $("timeline").querySelectorAll(".stop").forEach(li => li.onclick = () => { const i=+li.dataset.i, s=S.steps[i];
@@ -603,6 +601,15 @@ function speakSynced(t, onStart){
 
 $("startBtn").onclick = () => {
   if(counting||running) return;
+  if(!S.steps.length && !S.prec.length) return beginCountdown();
+  modal(`<h3>Reset the plan for this match?</h3><p>${esc(team().full)} has a route${S.prec.length ? " and used precision tokens" : ""} from before. Reset clears the route, timeline, precision tokens and white-box choices so this match starts fresh.</p>
+    <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn" data-keep>Keep plan &amp; start</button><button class="btn go" data-ok>Reset &amp; start</button></div>`, m => {
+      m.querySelector("[data-keep]").onclick = () => { close(); beginCountdown(); };
+      m.querySelector("[data-ok]").onclick = () => { S.steps=[]; S.boxes={A:null,B:null,C:null}; S.prec=[]; commit(); close(); beginCountdown(); };
+    });
+};
+function beginCountdown(){
+  if(counting||running) return;
   if(ended || remainMs<=0){ remainMs = MATCH*1000; ended = false; showClock(); }
   counting = true; $("startBtn").disabled = true;
   const ov = document.createElement("div"); ov.id="count"; document.body.appendChild(ov);
@@ -637,7 +644,7 @@ $("scoreBtn").onclick = () => { if(running) endMatch(); else openAdjust(); };
 let lastResult = null;
 function openAdjust(){
   const p = planned();
-  const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts]}));
+  const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts], time:missionTime(id), tries:attempts(id).length}));
   rows.push({key:"prec", label:"Precision tokens remaining", plan:50, isTok:true, opts:[0,1,2,3,4,5,6], def:tokens()});
   rows.push({key:"insp", label:"Equipment inspection", plan:20, opts:[0,20]});
   rows.push({key:"m10", label:"M10 Fragile Microhabitats", plan:20, opts:[20,10,0], names:{20:"No damage (20)",10:"Reduced by 10 (10)",0:"Reduced by 20 (0)"}});
@@ -648,8 +655,8 @@ function openAdjust(){
   modal(`<h3>Time! Do you need to make any score adjustments?</h3>
     <p>${esc(team().full)} · Each mission starts at what you planned. Change anything that went differently on the field.</p>
     <div class="totals"><div><span>Planned</span><b id="tPlan">0</b></div><div><span>Actual</span><b id="tAct" style="color:var(--glow)">0</b></div><div><span>Difference</span><b id="tDiff">0</b></div></div>
-    <div class="tablewrap"><table class="adj"><thead><tr><th>Scoring item</th><th>Planned</th><th>Actual result</th><th class="num">Points</th></tr></thead>
-    <tbody>${rows.map(r=>`<tr id="row-${r.key}"><td>${r.label}</td><td class="num">${r.plan}</td><td>${sel(r)}</td><td class="num" id="pts-${r.key}"></td></tr>`).join("")}</tbody></table></div>
+    <div class="tablewrap"><table class="adj"><thead><tr><th>Scoring item</th><th class="num">Time on mission</th><th>Planned</th><th>Actual result</th><th class="num">Points</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr id="row-${r.key}"><td>${r.label}</td><td class="num">${r.time==null ? "" : dur(r.time)}${r.tries>1 ? `<span class="mt">${r.tries} tries</span>` : ""}</td><td class="num">${r.plan}</td><td>${sel(r)}</td><td class="num" id="pts-${r.key}"></td></tr>`).join("")}</tbody></table></div>
     <div class="mfoot"><button class="btn" data-x>Back to map</button><button class="btn go" data-save>Save score &amp; make map image</button></div>`, m => {
       const calc = () => {
         let plan=0, act=0;
@@ -664,8 +671,9 @@ function openAdjust(){
       m.querySelector("[data-save]").onclick = () => {
         const {plan, act} = calc();
         lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act,
-          items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
+          items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined, time: r.time ?? null, tries: r.tries || 0})),
           route: routeText(), sent: false,
+          avgLaunch: (st => st.gaps.length ? Math.round(st.avgLaunch*10)/10 : null)(runStats()),
           scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
         history.unshift(lastResult); close(); commit(); showImage(lastResult, true);
       };
@@ -675,7 +683,7 @@ function routeText(){ return S.steps.map(s => s.type==="out" ? `${LAUNCH[s.side]
 
 /* ================= HISTORY / REPORT ================= */
 function renderHistory(){
-  $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span>
+  $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${h.best&&h.best.high?"🏆 ":""}${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span>
     <small>${esc(h.date)}${SHEET_URL && h.scores ? (h.sent ? ` · <span class="sent">in Google Sheet ✓</span>` : ` · <button class="linkbtn" data-send="${i}">Send to Google Sheet</button>`) : ""}</small></div>`).join("")
     : `<span class="empty">When the timer ends and you save a final score, it is listed here.</span>`;
   $("history").querySelectorAll("[data-send]").forEach(b => b.onclick = () => resend(history[+b.dataset.send]));
@@ -690,6 +698,7 @@ async function sendToSheet(r, jpeg){
   const sc = r.scores, row = {team: r.team, total: r.actual, inspection: sc.insp ?? 0, precision: sc.prec ?? 0, missions: {}};
   for(let id=1; id<=15; id++) row.missions[id] = id===10 ? (sc.m10 ?? 0) : (sc["m"+id] ?? 0);
   if(jpeg){ row.image = jpeg; row.imageName = imageName(r, "jpg"); }
+  if(r.avgLaunch != null) row.avgLaunch = r.avgLaunch;
   let res, out;
   try{ res = await fetch(SHEET_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(row)}); }
   catch(e){ return {ok:false, what:"The app couldn't connect to the Google Sheet script.",
@@ -700,9 +709,9 @@ async function sendToSheet(r, jpeg){
   if(!out.ok) return {ok:false, what:"The script ran but couldn't add the row.",
     why:`Google said: <code>${esc(out.error||"unknown error")}</code>. If it mentions <b>null</b> or <b>appendRow</b>, the tab name in the script doesn't match a tab in the sheet.`};
   r.sent = true; save(); renderHistory();
-  return {ok:true, emailed: out.emailed || 0, emailNote: out.emailNote || ""};
+  return {ok:true, emailed: out.emailed || 0, emailNote: out.emailNote || "", highScore: !!out.highScore, previousBest: out.previousBest};
 }
-const sheetMsg = res => res.ok ? `<div class="sheetnote ok">✓ Added to the Google Sheet.${res.emailed ? ` Emailed to ${res.emailed} address${res.emailed>1?"es":""}.` : ""}</div>${res.emailNote ? `<div class="sheetnote bad">${esc(res.emailNote)}</div>` : ""}`
+const sheetMsg = res => res.ok ? `${res.highScore ? `<div class="sheetnote hs">🏆 New high score! Previous best was ${res.previousBest}. Marked in the sheet.</div>` : ""}<div class="sheetnote ok">✓ Added to the Google Sheet.${res.emailed ? ` Emailed to ${res.emailed} address${res.emailed>1?"es":""}.` : ""}</div>${res.emailNote ? `<div class="sheetnote bad">${esc(res.emailNote)}</div>` : ""}`
   : res.off ? `<div class="sheetnote">Google Sheet sending is off: ${res.what}</div>`
   : `<div class="sheetnote bad"><b>${res.title || "Not added to the Google Sheet."}</b> ${res.what} ${res.why}${res.title ? "" : "<br>The match is still saved here. After fixing it, click <b>Send to Google Sheet</b> under Saved matches."}</div>`;
 function sheetProblem(what, why, title){
@@ -759,7 +768,7 @@ function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.on
 function currentResult(){
   if(lastResult && lastResult.team===team().full) return lastResult;
   const p = planned();
-  const items = [...ORDER.map(id=>({label:mLabel(id),planned:p[id]||0,actual:p[id]||0})),
+  const items = [...ORDER.map(id=>({label:mLabel(id),planned:p[id]||0,actual:p[id]||0,time:missionTime(id),tries:attempts(id).length})),
     {label:"Precision tokens remaining",planned:50,actual:PREC[tokens()],tokens:tokens()},
     {label:"Equipment inspection",planned:20,actual:20},{label:"M10 Fragile Microhabitats",planned:20,actual:20}];
   const t = items.reduce((a,i)=>a+i.planned,0);
@@ -785,6 +794,18 @@ async function buildImage(r){
   g.textAlign="right";
   g.fillStyle="#9fbfae"; g.font=`700 44px ${D}`; g.fillText(r.planOnly ? "PLANNED SCORE" : "FINAL SCORE", W-90, 100);
   g.fillStyle="#7dffb2"; g.font=`700 190px ${D}`; g.fillText(String(r.actual), W-90, 260);
+  // high-score badge to the left of the score
+  if(!r.planOnly && r.best){ const sw = g.measureText(String(r.actual)).width, bx = W-90-sw-60;
+    if(r.best.high){
+      g.font=`700 64px ${D}`; const txt = "🏆 NEW HIGH SCORE!", tw = g.measureText(txt).width;
+      g.fillStyle="#ffd166"; roundRect(g, bx-tw-60, 130, tw+60, 110, 26); g.fill();
+      g.fillStyle="#2a1d00"; g.fillText(txt, bx-30, 208);
+      g.font=`600 42px ${B}`; g.fillStyle="#ffd166"; g.fillText(`Previous best ${r.best.prev}`, bx-30, 292);
+    } else {
+      g.font=`600 46px ${B}`; g.fillStyle="#9fbfae";
+      g.fillText(r.best.count ? `Team best ${r.best.prev}` : "First recorded score", bx, 200);
+    }
+  }
   if(!r.planOnly){ const d=r.actual-r.planned; g.fillStyle="#9fbfae"; g.font=`600 46px ${B}`;
     g.fillText(`Planned ${r.planned} · ${d>=0?"+":""}${d}`, W-90, 315); }
   g.textAlign="left";
@@ -810,7 +831,14 @@ async function buildImage(r){
   tiles.forEach(([lab,val],i) => { const x = 90 + i*(tw+40);
     g.fillStyle="#183428"; g.fillRect(x, sy, tw, 190);
     g.fillStyle="#9fbfae"; g.font=`700 40px ${D}`; g.fillText(lab, x+36, sy+64);
-    g.fillStyle="#e9f5ee"; g.font=`700 92px ${D}`; g.fillText(val, x+36, sy+160); });
+    g.fillStyle="#e9f5ee"; g.font=`700 92px ${D}`; g.fillText(val, x+36, sy+160);
+    // Average launch time vs. this team's last match: green ↓ = faster, red ↑ = slower
+    if(i===1 && r.avgLaunch!=null && typeof r.prevAvg==="number" && r.avgLaunch!==r.prevAvg){
+      const up = r.avgLaunch > r.prevAvg, ax = x + 36 + g.measureText(val).width + 60, ay = sy + 128, col = up ? "#e0383b" : GREEN;
+      g.save(); g.translate(ax, ay); g.fillStyle = col; g.beginPath(); g.moveTo(0, up?-46:46); g.lineTo(34, up?-6:6); g.lineTo(13, up?-6:6);
+      g.lineTo(13, up?44:-44); g.lineTo(-13, up?44:-44); g.lineTo(-13, up?-6:6); g.lineTo(-34, up?-6:6); g.closePath(); g.fill(); g.restore();
+      g.fillStyle="#9fbfae"; g.font=`600 34px ${B}`; g.fillText(`last ${dur(r.prevAvg)}`, ax + 52, sy + 140);
+    } });
   sy += 190 + 90;
   g.fillStyle="#9fbfae"; g.font=`700 44px ${D}`; g.fillText("POINTS PER RUN", 90, sy);
   sy += 30;
@@ -825,13 +853,15 @@ async function buildImage(r){
   // breakdown
   y = HEAD + MH + TLH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("POINTS BY MISSION", 90, y);
-  g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "planned points" : "earned · (planned)", W-90, y); g.textAlign="left";
+  g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "time on mission · planned points" : "time on mission · earned · (planned)", W-90, y); g.textAlign="left";
   const colW = (W-180)/COLS, top = y + 50;
   r.items.forEach((it,i) => {
     const col = Math.floor(i/PER), row = i%PER, x = 90 + col*colW, yy = top + row*RH;
     if(row%2===0){ g.fillStyle="#11261d"; g.fillRect(x-20, yy, colW-40, RH); }
     g.fillStyle="#e9f5ee"; g.font=`600 44px ${B}`;
     g.fillText(it.label + (it.tokens!==undefined ? ` (${it.tokens} left)` : ""), x, yy+58);
+    if(it.time!=null){ g.textAlign="right"; g.font=`600 36px ${B}`; g.fillStyle="#9fbfae";
+      g.fillText(dur(it.time) + (it.tries>1 ? ` · ${it.tries} tries` : ""), x+colW-330, yy+58); g.textAlign="left"; }
     g.textAlign="right";
     const changed = !r.planOnly && it.actual !== it.planned;
     g.font=`700 50px ${D}`; g.fillStyle = it.actual ? (changed ? "#ffd166" : "#7dffb2") : "#6f8f7f";
@@ -844,18 +874,35 @@ async function buildImage(r){
   routeLines.forEach((l,i)=>g.fillText(l, 90, y + i*62));
   return c;
 }
+function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
 function wrap(g, text, max){ const out=[]; let line="";
   text.split(" ").forEach(w => { const t = line ? line+" "+w : w; if(g.measureText(t).width > max && line){ out.push(line); line=w; } else line=t; });
   if(line) out.push(line); return out; }
 function imageName(r, ext){ const d = new Date();
   return `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.${ext}`; }
+// Asks the script for this team's best recorded score (before this match), so the image can show a high-score badge.
+async function lookupBest(r){
+  if(r.prevAvg === undefined){   // fallback: this team's previous saved match on this device
+    const older = history.slice(history.indexOf(r)+1).find(h => h.team===r.team && h.avgLaunch!=null);
+    if(older) r.prevAvg = older.avgLaunch;
+  }
+  if(!SHEET_URL || r.best) return;
+  try{
+    const ctl = new AbortController(), timer = setTimeout(()=>ctl.abort(), 6000);
+    const out = await (await fetch(`${SHEET_URL}?best=${encodeURIComponent(r.team)}`, {signal: ctl.signal})).json();
+    clearTimeout(timer);
+    if(out.ok && typeof out.count==="number") r.best = {count: out.count, prev: out.best, high: out.count>0 && r.actual>out.best};
+    if(out.ok && typeof out.lastAvg==="number") r.prevAvg = out.lastAvg;
+  }catch(e){}
+}
 async function showImage(r, send){
   modal(`<h3>Building the map image…</h3><p>This takes a moment.</p>`, null, true);
+  if(send){ await lookupBest(r); save(); }
   let c; try{ c = await buildImage(r); }catch(e){ close(); return toast("The image could not be built. Try again."); }
   const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
   const src = c.toDataURL("image/png");
   const sending = send ? sendToSheet(r, c.toDataURL("image/jpeg", .85).split(",")[1]) : null;
-  modal(`<h3>${esc(r.team)} · ${r.actual} points</h3>
+  modal(`<h3>${r.best&&r.best.high?"🏆 New high score! ":""}${esc(r.team)} · ${r.actual} points</h3>
     <p>Here is the route map, match timeline and score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
     <div id="sheetStatus">${sending ? `<div class="sheetnote">Sending to the Google Sheet…</div>` : ""}</div>
     <img src="${src}" alt="Route map and score breakdown for ${esc(r.team)}" style="width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">
@@ -880,6 +927,11 @@ function modal(html, wire, wide){
 }
 function close(){ $("modalRoot").innerHTML = ""; }
 document.addEventListener("keydown", e => { if(e.key==="Escape") close(); });
+function flash(side, text){
+  document.querySelectorAll(".flash").forEach(f=>f.remove());
+  const f = document.createElement("div"); f.className = `flash ${side}`; f.innerHTML = `<span>${text}</span>`;
+  document.body.appendChild(f); setTimeout(()=>f.remove(), 950);
+}
 let tt; function toast(t){ let el=document.querySelector(".toast"); if(!el){ el=document.createElement("div"); el.className="toast"; document.body.appendChild(el); }
   el.textContent=t; clearTimeout(tt); tt=setTimeout(()=>el.remove(),3200); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
