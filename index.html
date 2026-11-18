@@ -709,9 +709,9 @@ async function sendToSheet(r, jpeg){
   if(!out.ok) return {ok:false, what:"The script ran but couldn't add the row.",
     why:`Google said: <code>${esc(out.error||"unknown error")}</code>. If it mentions <b>null</b> or <b>appendRow</b>, the tab name in the script doesn't match a tab in the sheet.`};
   r.sent = true; save(); renderHistory();
-  return {ok:true, emailed: out.emailed || 0, emailNote: out.emailNote || "", highScore: !!out.highScore, previousBest: out.previousBest};
+  return {ok:true, emailed: out.emailed || 0, emailNote: out.emailNote || "", drive: !!out.savedToDrive, driveNote: out.driveNote || "", highScore: !!out.highScore, previousBest: out.previousBest};
 }
-const sheetMsg = res => res.ok ? `${res.highScore ? `<div class="sheetnote hs">🏆 New high score! Previous best was ${res.previousBest}. Marked in the sheet.</div>` : ""}<div class="sheetnote ok">✓ Added to the Google Sheet.${res.emailed ? ` Emailed to ${res.emailed} address${res.emailed>1?"es":""}.` : ""}</div>${res.emailNote ? `<div class="sheetnote bad">${esc(res.emailNote)}</div>` : ""}`
+const sheetMsg = res => res.ok ? `${res.highScore ? `<div class="sheetnote hs">🏆 New high score! Previous best was ${res.previousBest}. Marked in the sheet.</div>` : ""}<div class="sheetnote ok">✓ Added to the Google Sheet.${res.emailed ? ` Emailed to ${res.emailed} address${res.emailed>1?"es":""}.` : ""}${res.drive ? " Saved to Google Drive." : ""}</div>${res.emailNote ? `<div class="sheetnote bad">${esc(res.emailNote)}</div>` : ""}${res.driveNote ? `<div class="sheetnote bad">${esc(res.driveNote)}</div>` : ""}`
   : res.off ? `<div class="sheetnote">Google Sheet sending is off: ${res.what}</div>`
   : `<div class="sheetnote bad"><b>${res.title || "Not added to the Google Sheet."}</b> ${res.what} ${res.why}${res.title ? "" : "<br>The match is still saved here. After fixing it, click <b>Send to Google Sheet</b> under Saved matches."}</div>`;
 function sheetProblem(what, why, title){
@@ -878,8 +878,9 @@ function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x
 function wrap(g, text, max){ const out=[]; let line="";
   text.split(" ").forEach(w => { const t = line ? line+" "+w : w; if(g.measureText(t).width > max && line){ out.push(line); line=w; } else line=t; });
   if(line) out.push(line); return out; }
+// File name: Team Name, score, then date, e.g. "Canopy Coders 290 2026-11-18.png"
 function imageName(r, ext){ const d = new Date();
-  return `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.${ext}`; }
+  return `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g," ")} ${r.actual} ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.${ext}`; }
 // Asks the script for this team's best recorded score (before this match), so the image can show a high-score badge.
 async function lookupBest(r){
   if(r.prevAvg === undefined){   // fallback: this team's previous saved match on this device
@@ -899,7 +900,7 @@ async function showImage(r, send){
   modal(`<h3>Building the map image…</h3><p>This takes a moment.</p>`, null, true);
   if(send){ await lookupBest(r); save(); }
   let c; try{ c = await buildImage(r); }catch(e){ close(); return toast("The image could not be built. Try again."); }
-  const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
+  const name = imageName(r, "png");
   const src = c.toDataURL("image/png");
   const sending = send ? sendToSheet(r, c.toDataURL("image/jpeg", .85).split(",")[1]) : null;
   modal(`<h3>${r.best&&r.best.high?"🏆 New high score! ":""}${esc(r.team)} · ${r.actual} points</h3>
