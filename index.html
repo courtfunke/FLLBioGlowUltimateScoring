@@ -68,6 +68,15 @@ button{cursor:pointer}
 .tlhead span{font-size:.8rem;color:var(--muted)}
 .tlwrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
 .tlwrap svg{display:block;width:100%;min-width:760px;height:auto}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+.stat{background:var(--panel-2);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat>span{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stat>b{font-family:var(--display);font-size:1.7rem;font-variant-numeric:tabular-nums}
+.stat.wide{grid-column:1/-1}
+.runlist{display:flex;flex-direction:column;gap:6px;margin-top:4px;font-size:.9rem;font-variant-numeric:tabular-nums}
+.runlist strong{color:var(--glow);margin-left:6px}
+.runlist em{color:var(--gold);font-style:normal;font-weight:700}
+@media (max-width:620px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .legend i{display:inline-block;width:26px;height:5px;border-radius:3px;vertical-align:middle;margin-right:6px}
 
 .side{display:flex;flex-direction:column;gap:14px}
@@ -197,6 +206,7 @@ button{cursor:pointer}
       </div>
       <div class="tlhead"><h2>Match timeline</h2><span>↑ leaves launch · ↓ returns · green ↓ precision token · circles are mission points. Times come from the match clock.</span></div>
       <div class="tlwrap" id="matchTimeline"></div>
+      <div class="stats" id="runStats"></div>
     </div>
 
     <aside class="side">
@@ -463,6 +473,31 @@ function timelineSVG(W=3600){
   return {svg: g + `</svg>`, W, H};
 }
 
+/* Run statistics. A run = ↑ to the next ↓. Time in launch = ↓ to the next ↑.
+   Points per run count only what each run adds to a mission's best score, so the runs add up to the mission total. */
+function runStats(){
+  const runs = [], gaps = [], best = {}; let cur = null, lastIn = null;
+  S.steps.forEach(s => {
+    if(s.type==="out"){ if(lastIn) gaps.push(Math.max(0, s.t - lastIn.t)); cur = {side:s.side, start:s.t, end:null, endSide:null, pts:0}; runs.push(cur); }
+    else if(s.type==="in"){ if(cur){ cur.end = s.t; cur.endSide = s.side; cur = null; } lastIn = s; }
+    else if(cur){ const before = best[s.id]||0; best[s.id] = Math.max(before, s.points||0); cur.pts += best[s.id] - before; }
+  });
+  const now = elapsed();
+  runs.forEach(r => { r.open = r.end===null; r.len = Math.max(0, (r.open ? now : r.end) - r.start); });
+  const inLaunch = gaps.reduce((a,b)=>a+b,0), inRuns = runs.reduce((a,r)=>a+r.len,0);
+  return {runs, gaps, inLaunch, inRuns, avgLaunch: gaps.length ? inLaunch/gaps.length : 0};
+}
+function renderStats(){
+  const st = runStats();
+  $("runStats").innerHTML = `<div class="stat"><span>Time in launch</span><b>${fmt(st.inLaunch)}</b></div>
+    <div class="stat"><span>Time in runs</span><b>${fmt(st.inRuns)}</b></div>
+    <div class="stat"><span>Average launch time</span><b>${st.gaps.length ? fmt(st.avgLaunch) : "–"}</b></div>
+    <div class="stat"><span>Number of runs</span><b>${st.runs.length}</b></div>
+    <div class="stat wide"><span>Points per run</span><div class="runlist">${st.runs.length ? st.runs.map((r,i)=>
+      `<div><b>Run ${i+1}</b> <span class="chip ${r.side}">${LAUNCH[r.side].label} ↑ ${fmt(r.start)}</span> → ${r.open ? `<em>still out</em>` : `<span class="chip ${r.endSide}">${LAUNCH[r.endSide].label} ↓ ${fmt(r.end)}</span>`} · ${fmt(r.len)} <strong>${r.pts} pts</strong></div>`).join("")
+      : `<div class="empty">Runs appear here once the robot leaves a launch area.</div>`}</div></div>`;
+}
+
 function render(){
   const p = planned(); const mSum = Object.values(p).reduce((a,b)=>a+b,0);
   $("plannedTotal").textContent = 90 + mSum;
@@ -483,6 +518,7 @@ function render(){
     askPoints(s.id, pts => { s.points = pts; commit(); }, undefined, i); });
   // match timeline graphic
   $("matchTimeline").innerHTML = timelineSVG().svg;
+  renderStats();
   // tokens
   const tk = tokens();
   $("pips").innerHTML = Array.from({length:6},(_,i)=>`<span class="pip ${i<tk?"":"lost"}"></span>`).join("");
@@ -628,7 +664,8 @@ async function buildImage(r){
   const ctx0 = document.createElement("canvas").getContext("2d");
   ctx0.font = `600 46px ${B}`;
   const routeLines = wrap(ctx0, "Route: " + (r.route || "none"), W-200);
-  const TL = timelineSVG(W), TLH = 150 + TL.H + 40;
+  const TL = timelineSVG(W), ST = runStats(), SROWS = Math.max(1, Math.ceil(ST.runs.length/2));
+  const TLH = 150 + TL.H + 40 + 300 + SROWS*76;
   const H = HEAD + MH + TLH + PANEL + routeLines.length*62 + 90;
   const c = document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
   g.fillStyle="#0b1a14"; g.fillRect(0,0,W,H);
@@ -657,6 +694,26 @@ async function buildImage(r){
   g.fillText("↑ red/blue: leaves launch   ↓ red/blue: returns to launch   ● mission points   green ↓ precision token", W-90, y); g.textAlign="left";
   const tUrl = URL.createObjectURL(new Blob([TL.svg],{type:"image/svg+xml"}));
   try{ g.drawImage(await loadImg(tUrl), 0, y+40, W, TL.H); } finally { URL.revokeObjectURL(tUrl); }
+  // run statistics
+  let sy = y + 40 + TL.H + 40;
+  const tiles = [["TIME IN LAUNCH", fmt(ST.inLaunch)], ["TIME IN RUNS", fmt(ST.inRuns)],
+    ["AVERAGE LAUNCH TIME", ST.gaps.length ? fmt(ST.avgLaunch) : "–"], ["NUMBER OF RUNS", String(ST.runs.length)]];
+  const tw = (W-180-3*40)/4;
+  tiles.forEach(([lab,val],i) => { const x = 90 + i*(tw+40);
+    g.fillStyle="#183428"; g.fillRect(x, sy, tw, 190);
+    g.fillStyle="#9fbfae"; g.font=`700 40px ${D}`; g.fillText(lab, x+36, sy+64);
+    g.fillStyle="#e9f5ee"; g.font=`700 92px ${D}`; g.fillText(val, x+36, sy+160); });
+  sy += 190 + 90;
+  g.fillStyle="#9fbfae"; g.font=`700 44px ${D}`; g.fillText("POINTS PER RUN", 90, sy);
+  sy += 30;
+  if(!ST.runs.length){ g.fillStyle="#9fbfae"; g.font=`600 42px ${B}`; g.fillText("No runs recorded.", 90, sy+50); }
+  ST.runs.forEach((r,i) => { const col = i%2, row = Math.floor(i/2), x = 90 + col*((W-180)/2), yy = sy + row*76 + 54;
+    g.font=`700 44px ${D}`; g.fillStyle="#e9f5ee"; g.fillText(`Run ${i+1}`, x, yy);
+    g.font=`600 40px ${B}`; g.fillStyle = LAUNCH[r.side].col; g.fillText(`${LAUNCH[r.side].label} ↑ ${fmt(r.start)}`, x+200, yy);
+    g.fillStyle="#9fbfae"; g.fillText("→", x+470, yy);
+    g.fillStyle = r.open ? "#ffd166" : LAUNCH[r.endSide].col; g.fillText(r.open ? "still out" : `${LAUNCH[r.endSide].label} ↓ ${fmt(r.end)}`, x+530, yy);
+    g.fillStyle="#9fbfae"; g.fillText(`run time ${fmt(r.len)}`, x+840, yy);
+    g.font=`700 48px ${D}`; g.fillStyle="#7dffb2"; g.textAlign="right"; g.fillText(`${r.pts} pts`, x+(W-180)/2-80, yy); g.textAlign="left"; });
   // breakdown
   y = HEAD + MH + TLH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("POINTS BY MISSION", 90, y);
