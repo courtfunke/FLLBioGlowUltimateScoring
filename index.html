@@ -140,6 +140,10 @@ button{cursor:pointer}
 .hist div{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-bottom:1px dashed var(--line)}
 .hist small{color:var(--muted);grid-column:1/-1}
 .hist .sent{color:var(--glow)}
+.sheetnote{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.9rem;color:var(--muted)}
+.sheetnote.ok{border-color:var(--glow);color:var(--glow);font-weight:700}
+.sheetnote.bad{border-color:var(--gold);color:var(--fg);background:rgba(255,209,102,.08)}
+.sheetnote code{color:var(--gold)}
 .linkbtn{background:none;border:0;padding:0;color:var(--gold);font-weight:700;text-decoration:underline;font-size:inherit}
 
 /* print report */
@@ -160,6 +164,7 @@ button{cursor:pointer}
 </style>
 </head>
 <body>
+
 
 
 <div class="wrap">
@@ -229,6 +234,7 @@ button{cursor:pointer}
         <div class="actions" style="margin-top:10px">
           <button class="btn small" id="csvBtn">Download CSV</button>
           <button class="btn small" id="histClear">Clear history</button>
+          <button class="btn small" id="sheetTest">Test Google Sheet</button>
         </div>
       </div>
     </aside>
@@ -271,7 +277,7 @@ const M10 = [[38.9,10.4],[54.4,32.6]];
 const PREC = [0,10,15,25,35,50,50];
 
 // Google Sheet: paste the Apps Script web app URL here (see README). Leave "" to turn sending off.
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbzpRf4rGaTdwQ9kUecFaj2Ided6GQNYUBx-2O_D65pryj66i1l3tgUf_Cn3LNd_UOv6/exec";
+const SHEET_URL = "";
 const LAUNCH = {
   red:{c:[0,2037],a:[305,1600],up:[180,1400],down:[430,1400],label:"Red",col:"#e0383b"},
   blue:{c:[3600,2037],a:[3295,1600],up:[3170,1400],down:[3420,1400],label:"Blue",col:"#2f7ff0"}};
@@ -648,7 +654,7 @@ function openAdjust(){
           items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
           route: routeText(), sent: false,
           scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
-        history.unshift(lastResult); close(); commit(); showImage(lastResult); sendToSheet(lastResult);
+        history.unshift(lastResult); close(); commit(); showImage(lastResult, sendToSheet(lastResult));
       };
     }, true);
 }
@@ -659,24 +665,52 @@ function renderHistory(){
   $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span>
     <small>${esc(h.date)}${SHEET_URL && h.scores ? (h.sent ? ` · <span class="sent">in Google Sheet ✓</span>` : ` · <button class="linkbtn" data-send="${i}">Send to Google Sheet</button>`) : ""}</small></div>`).join("")
     : `<span class="empty">When the timer ends and you save a final score, it is listed here.</span>`;
-  $("history").querySelectorAll("[data-send]").forEach(b => b.onclick = () => sendToSheet(history[+b.dataset.send]));
+  $("history").querySelectorAll("[data-send]").forEach(b => b.onclick = () => resend(history[+b.dataset.send]));
 }
 
 /* ================= GOOGLE SHEET ================= */
 // Sends one row: Timestamp, Team Name, Total Score, Inspection Bonus, M01–M15, Precision Tokens (points).
+// Returns {ok} or {ok:false, what, why}; the caller decides how to show it.
 async function sendToSheet(r){
-  if(!SHEET_URL || !r || !r.scores) return;
+  if(!r || !r.scores) return {ok:false, what:"This match has no scores to send.", why:""};
+  if(!SHEET_URL) return {ok:false, off:true, what:"The Google Sheet link (SHEET_URL) is empty in index.html.", why:"Paste the web app URL ending in <b>/exec</b> between the quotes and upload index.html to GitHub."};
   const sc = r.scores, row = {team: r.team, total: r.actual, inspection: sc.insp ?? 0, precision: sc.prec ?? 0, missions: {}};
   for(let id=1; id<=15; id++) row.missions[id] = id===10 ? (sc.m10 ?? 0) : (sc["m"+id] ?? 0);
+  let res, out;
+  try{ res = await fetch(SHEET_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(row)}); }
+  catch(e){ return {ok:false, what:"The app couldn't connect to the Google Sheet script.",
+    why:`Usually the deployment's <b>Who has access</b> is not <b>Anyone</b> (school Google accounts sometimes only allow "Anyone in your school"), or the link isn't the <b>/exec</b> web app URL. The preview here also blocks outside connections, so test on the GitHub site.`}; }
+  try{ out = await res.json(); }
+  catch(e){ return {ok:false, what:`The script answered with something other than a result (status ${res.status}).`,
+    why:"Google probably showed a sign-in page instead of running the script. Set <b>Who has access</b> to <b>Anyone</b> and deploy a new version."}; }
+  if(!out.ok) return {ok:false, what:"The script ran but couldn't add the row.",
+    why:`Google said: <code>${esc(out.error||"unknown error")}</code>. If it mentions <b>null</b> or <b>appendRow</b>, the tab name in the script doesn't match a tab in the sheet.`};
+  r.sent = true; save(); renderHistory();
+  return {ok:true};
+}
+const sheetMsg = res => res.ok ? `<div class="sheetnote ok">✓ Added to the Google Sheet.</div>`
+  : res.off ? `<div class="sheetnote">Google Sheet sending is off: ${res.what}</div>`
+  : `<div class="sheetnote bad"><b>${res.title || "Not added to the Google Sheet."}</b> ${res.what} ${res.why}${res.title ? "" : "<br>The match is still saved here. After fixing it, click <b>Send to Google Sheet</b> under Saved matches."}</div>`;
+function sheetProblem(what, why, title){
+  modal(`<h3>Google Sheet</h3>${sheetMsg({ok:false, what, why, title})}<div class="mfoot"><button class="btn" data-x>OK</button></div>`);
+}
+async function resend(r){
+  toast("Sending to the Google Sheet…");
+  const res = await sendToSheet(r); renderHistory();
+  if(res.ok) toast(`${r.team}: ${r.actual} points added to the Google Sheet.`); else sheetProblem(res.what, res.why);
+}
+// "Test Google Sheet" button: checks the script link without adding a row
+async function testSheet(){
+  if(!SHEET_URL) return sheetProblem("The Google Sheet link (SHEET_URL) is empty in index.html.", "Paste the web app URL ending in <b>/exec</b> between the quotes and upload index.html to GitHub.", "Connection test failed.");
   try{
-    const res = await fetch(SHEET_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(row)});
-    const out = await res.json();
-    if(!out.ok) throw new Error(out.error || "rejected");
-    r.sent = true; save(); renderHistory(); toast(`${r.team}: ${r.actual} points added to the Google Sheet.`);
+    const res = await fetch(SHEET_URL); const out = await res.json();
+    if(!out.ok) throw 0;
+    modal(`<h3>Google Sheet connection works</h3><div class="sheetnote ok">✓ The script answered: “${esc(out.message||"ok")}”</div><p>Saved scores will be added to the sheet.</p><div class="mfoot"><button class="btn go" data-x>OK</button></div>`);
   }catch(e){
-    renderHistory(); toast(`Couldn't reach the Google Sheet. Use "Send to Google Sheet" under Saved matches to try again.`);
+    sheetProblem("The test couldn't reach the Google Sheet script.", `Check that the deployment is a <b>Web app</b> with <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, and that the link ends in <b>/exec</b>. Link in the app now: <code>${esc(SHEET_URL)}</code>`, "Connection test failed.");
   }
 }
+$("sheetTest").onclick = testSheet;
 function renderReport(){
   const p = planned(), r = lastResult && lastResult.team===team().full ? lastResult : null;
   const items = r ? r.items : [
@@ -796,13 +830,14 @@ async function buildImage(r){
 function wrap(g, text, max){ const out=[]; let line="";
   text.split(" ").forEach(w => { const t = line ? line+" "+w : w; if(g.measureText(t).width > max && line){ out.push(line); line=w; } else line=t; });
   if(line) out.push(line); return out; }
-async function showImage(r){
+async function showImage(r, sending){
   modal(`<h3>Building the map image…</h3><p>This takes a moment.</p>`, null, true);
   let c; try{ c = await buildImage(r); }catch(e){ close(); return toast("The image could not be built. Try again."); }
   const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
   const src = c.toDataURL("image/png");
   modal(`<h3>${esc(r.team)} · ${r.actual} points</h3>
     <p>Here is the route map, match timeline and score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
+    <div id="sheetStatus">${sending ? `<div class="sheetnote">Sending to the Google Sheet…</div>` : ""}</div>
     <img src="${src}" alt="Route map and score breakdown for ${esc(r.team)}" style="width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">
     <div class="mfoot"><button class="btn" data-x>Close</button><button class="btn go" data-ok>Save image</button></div>`, m => {
       m.querySelector("[data-ok]").onclick = () => c.toBlob(b => {
@@ -810,6 +845,7 @@ async function showImage(r){
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
       }, "image/png");
     }, true);
+  if(sending) sending.then(res => { const el = $("sheetStatus"); if(el) el.innerHTML = sheetMsg(res); else if(!res.ok && !res.off) sheetProblem(res.what, res.why); });
 }
 $("imgBtn").onclick = () => showImage(currentResult());
 
