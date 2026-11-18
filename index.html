@@ -57,7 +57,8 @@ button{cursor:pointer}
 .main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
 .mapcard{padding:10px}
 .hint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin:0 4px 8px}
-#hintText{font-weight:600;color:var(--glow)}
+#hintText{font-weight:600;color:var(--glow);flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){#hintText{flex-basis:100%;white-space:normal}}
 .map{position:relative;width:100%;max-width:100%;aspect-ratio:3600/2037;border-radius:10px;overflow:hidden;background:#123}
 .map img{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
 .map svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
@@ -75,6 +76,9 @@ button{cursor:pointer}
 .timeline li{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px dashed var(--line);font-size:.9rem}
 .timeline .n{font-family:var(--display);font-weight:700;color:var(--muted);text-align:right}
 .timeline .pts{font-weight:800;font-variant-numeric:tabular-nums}
+.timeline .pts.zero{color:var(--muted)}
+.timeline .stop{cursor:pointer}.timeline .stop:hover{background:var(--panel-2)}
+.timeline .try{color:var(--gold);font-weight:700;font-size:.75rem}
 .timeline .run{display:flex;justify-content:space-between;font-family:var(--display);letter-spacing:.06em;font-size:.78rem;text-transform:uppercase;padding-top:10px;border:0}
 .chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:800}
 .chip.red{background:var(--red);color:#fff}.chip.blue{background:var(--blue);color:#fff}
@@ -173,6 +177,7 @@ button{cursor:pointer}
         <div class="actions">
           <button class="btn small" id="undoBtn">Undo last stop</button>
           <button class="btn small" id="clearBtn">Clear plan</button>
+          <button class="btn small" id="imgBtn">Map image</button>
           <button class="btn small" id="printBtn">Print report</button>
         </div>
       </div>
@@ -193,7 +198,7 @@ button{cursor:pointer}
         <div class="rows" id="scoreRows"></div>
       </div>
       <div class="card">
-        <h2>Run timeline</h2>
+        <h2>Run timeline</h2><p class="empty" style="margin:-4px 0 8px;font-size:.8rem">Click a stop to change its points.</p>
         <ol class="timeline" id="timeline"></ol>
       </div>
       <div class="card">
@@ -255,7 +260,8 @@ function save(){ try{ localStorage.setItem("fll-state", JSON.stringify(S)); loca
 
 const $ = id => document.getElementById(id);
 const team = () => TEAMS[S.team] || TEAMS[0];
-const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission" && !s.revisit) p[s.id]=s.points; }); return p; };
+const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission") p[s.id]=Math.max(p[s.id]??0, s.points||0); }); return p; };
+const attempts = id => S.steps.filter(s=>s.type==="mission"&&s.id===id);
 const missionPos = id => { if(MISSIONS[id].pos) return XY(MISSIONS[id].pos); const b = Object.keys(S.boxes).find(k=>S.boxes[k]===id); return b ? XY(BOXES[b]) : null; };
 const stepPos = s => s.type==="launch" ? LAUNCH[s.side].a : missionPos(s.id);
 const mLabel = id => `M${String(id).padStart(2,"0")} ${MISSIONS[id].name}`;
@@ -296,24 +302,16 @@ function needStart(){ if(!S.steps.length){ toast("First click the red or blue la
 
 function clickMission(id, box){
   if(needStart()) return;
-  const cur = planned()[id];
-  if(cur !== undefined){
-    modal(`<h3>${mLabel(id)}</h3><p>Already in your plan for <b>${cur} points</b>.</p>
-      <div class="opts"><button class="opt" data-pass>Route through<small>no extra points</small></button>
-      <button class="opt" data-change>Change points<small>keep it in place</small></button></div>
-      <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`, m => {
-        m.querySelector("[data-pass]").onclick = () => { S.steps.push({type:"mission",id,points:0,revisit:true}); close(); commit(); };
-        m.querySelector("[data-change]").onclick = () => askPoints(id, pts => { S.steps.forEach(s=>{ if(s.type==="mission"&&s.id===id&&!s.revisit) s.points=pts; }); commit(); });
-      });
-    return;
-  }
   askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box}); commit(); }, box);
 }
 
-function askPoints(id, done, box){
-  const o = MISSIONS[id].opts;
-  modal(`<h3>${mLabel(id)}</h3><p>How many points do you plan to earn here?</p>
-    <div class="opts">${o.map(v=>`<button class="opt" data-v="${v}">${v}<small>points</small></button>`).join("")}</div>
+function askPoints(id, done, box, editIdx){
+  const o = [0, ...MISSIONS[id].opts];
+  const prev = attempts(id).filter(s => S.steps.indexOf(s) !== editIdx);
+  const n = editIdx !== undefined ? attempts(id).indexOf(S.steps[editIdx]) + 1 : prev.length + 1;
+  const note = prev.length ? `This is attempt ${n}. Other attempts: ${prev.map(s=>s.points).join(", ")} pts. The mission only counts once, so your best attempt is what scores.` : `Choose 0 if the robot is only passing through or setting up.`;
+  modal(`<h3>${mLabel(id)}${n>1?` · attempt ${n}`:""}</h3><p>How many points do you plan to earn on this visit? ${note}</p>
+    <div class="opts">${o.map(v=>`<button class="opt ${editIdx!==undefined&&S.steps[editIdx].points===v?"sel":""}" data-v="${v}">${v}<small>${v===0?"no points":"points"}</small></button>`).join("")}</div>
     <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`,
     m => m.querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
       if(box) S.boxes[box] = id;
@@ -404,9 +402,12 @@ function render(){
   let run=0, html="";
   S.steps.forEach((s,i) => {
     if(s.type==="launch"){ run++; html += `<li class="run">${i===0?"Run 1 · start":"Run "+run+" · back to base"} <span class="chip ${s.side}">${LAUNCH[s.side].label} launch</span></li>`; }
-    else html += `<li><span class="n">${i}</span><span>${mLabel(s.id)}</span><span class="pts">${s.revisit?"pass":"+"+s.points}</span></li>`;
+    else { const at = attempts(s.id), k = at.indexOf(s)+1;
+      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${i}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}</span></li>`; }
   });
   $("timeline").innerHTML = html || `<li class="empty">Your route will appear here, stop by stop.</li>`;
+  $("timeline").querySelectorAll(".stop").forEach(li => li.onclick = () => { const i=+li.dataset.i, s=S.steps[i];
+    askPoints(s.id, pts => { s.points = pts; commit(); }, undefined, i); });
   // tokens
   $("pips").innerHTML = Array.from({length:6},(_,i)=>`<span class="pip ${i<S.tokens?"":"lost"}"></span>`).join("");
   $("tokCount").textContent = S.tokens; $("tokPts").textContent = PREC[S.tokens];
@@ -478,7 +479,7 @@ function openAdjust(){
     <div class="totals"><div><span>Planned</span><b id="tPlan">0</b></div><div><span>Actual</span><b id="tAct" style="color:var(--glow)">0</b></div><div><span>Difference</span><b id="tDiff">0</b></div></div>
     <div class="tablewrap"><table class="adj"><thead><tr><th>Scoring item</th><th>Planned</th><th>Actual result</th><th class="num">Points</th></tr></thead>
     <tbody>${rows.map(r=>`<tr id="row-${r.key}"><td>${r.label}</td><td class="num">${r.plan}</td><td>${sel(r)}</td><td class="num" id="pts-${r.key}"></td></tr>`).join("")}</tbody></table></div>
-    <div class="mfoot"><button class="btn" data-x>Back to map</button><button class="btn go" data-save>Save final score</button></div>`, m => {
+    <div class="mfoot"><button class="btn" data-x>Back to map</button><button class="btn go" data-save>Save score &amp; make map image</button></div>`, m => {
       const calc = () => {
         let plan=0, act=0;
         rows.forEach(r => { const v = +m.querySelector("#adj-"+r.key).value; const pts = r.isTok ? PREC[v] : v;
@@ -494,11 +495,11 @@ function openAdjust(){
         lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act,
           items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
           route: routeText() };
-        history.unshift(lastResult); close(); commit(); toast(`Saved: ${team().full} scored ${act} (planned ${plan}).`);
+        history.unshift(lastResult); close(); commit(); showImage(lastResult);
       };
     }, true);
 }
-function routeText(){ return S.steps.map(s => s.type==="launch" ? `${LAUNCH[s.side].label} launch` : `M${s.id}${s.revisit?" (pass)":" +"+s.points}`).join(" → "); }
+function routeText(){ return S.steps.map(s => s.type==="launch" ? `${LAUNCH[s.side].label} launch` : `M${s.id} +${s.points||0}`).join(" → "); }
 
 /* ================= HISTORY / REPORT ================= */
 function renderHistory(){
@@ -529,6 +530,89 @@ $("csvBtn").onclick = () => {
 $("histClear").onclick = () => modal(`<h3>Clear all saved matches?</h3><p>This removes every saved score on this device.</p>
   <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn red" data-ok>Clear history</button></div>`,
   m => m.querySelector("[data-ok]").onclick = () => { history=[]; lastResult=null; close(); commit(); });
+
+
+/* ================= RESULT IMAGE ================= */
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+function currentResult(){
+  if(lastResult && lastResult.team===team().full) return lastResult;
+  const p = planned();
+  const items = [...ORDER.map(id=>({label:mLabel(id),planned:p[id]||0,actual:p[id]||0})),
+    {label:"Precision tokens remaining",planned:50,actual:PREC[S.tokens],tokens:S.tokens},
+    {label:"Equipment inspection",planned:20,actual:20},{label:"M10 Fragile Microhabitats",planned:20,actual:20}];
+  const t = items.reduce((a,i)=>a+i.planned,0);
+  return {team:team().full, date:new Date().toLocaleString(), planned:t, actual:items.reduce((a,i)=>a+i.actual,0), items, route:routeText(), planOnly:true};
+}
+async function buildImage(r){
+  try{ await document.fonts.ready; }catch(e){}
+  const W=3600, HEAD=330, MH=2037, COLS=3, PER=Math.ceil(r.items.length/COLS), RH=86;
+  const PANEL = 170 + PER*RH + 60;
+  const ctx0 = document.createElement("canvas").getContext("2d");
+  ctx0.font = "600 46px 'Nunito Sans', sans-serif";
+  const routeLines = wrap(ctx0, "Route: " + (r.route || "none"), W-160);
+  const H = HEAD + MH + PANEL + routeLines.length*62 + 90;
+  const c = document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
+  const D="'Chakra Petch', 'Trebuchet MS', sans-serif", B="'Nunito Sans', system-ui, sans-serif";
+  g.fillStyle="#0b1a14"; g.fillRect(0,0,W,H);
+  // header
+  g.fillStyle="#7dffb2"; g.font=`700 44px ${D}`; g.fillText("FIRST LEGO LEAGUE · BIOGLOW", 90, 100);
+  g.fillStyle="#e9f5ee"; g.font=`700 120px ${D}`; g.fillText(r.team, 90, 225);
+  g.fillStyle="#9fbfae"; g.font=`600 46px ${B}`; g.fillText(r.date + (r.planOnly ? " · planned run" : " · final score"), 90, 295);
+  g.textAlign="right";
+  g.fillStyle="#9fbfae"; g.font=`700 44px ${D}`; g.fillText(r.planOnly ? "PLANNED SCORE" : "FINAL SCORE", W-90, 100);
+  g.fillStyle="#7dffb2"; g.font=`700 190px ${D}`; g.fillText(String(r.actual), W-90, 260);
+  if(!r.planOnly){ const d=r.actual-r.planned; g.fillStyle="#9fbfae"; g.font=`600 46px ${B}`;
+    g.fillText(`Planned ${r.planned} · ${d>=0?"+":""}${d}`, W-90, 315); }
+  g.textAlign="left";
+  // map + route overlay
+  let map; try{ map = await loadImg("map-hd.jpg"); }catch(e){ map = await loadImg("map.jpg"); }
+  g.drawImage(map, 0, HEAD, W, MH);
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg"); clone.setAttribute("width",W); clone.setAttribute("height",MH);
+  clone.querySelectorAll("title").forEach(t=>t.remove());
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml"}));
+  try{ g.drawImage(await loadImg(url), 0, HEAD, W, MH); } finally { URL.revokeObjectURL(url); }
+  // breakdown
+  let y = HEAD + MH + 110;
+  g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("POINTS BY MISSION", 90, y);
+  g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "planned points" : "earned · (planned)", W-90, y); g.textAlign="left";
+  const colW = (W-180)/COLS, top = y + 50;
+  r.items.forEach((it,i) => {
+    const col = Math.floor(i/PER), row = i%PER, x = 90 + col*colW, yy = top + row*RH;
+    if(row%2===0){ g.fillStyle="#11261d"; g.fillRect(x-20, yy, colW-40, RH); }
+    g.fillStyle="#e9f5ee"; g.font=`600 44px ${B}`;
+    g.fillText(it.label + (it.tokens!==undefined ? ` (${it.tokens} left)` : ""), x, yy+58);
+    g.textAlign="right";
+    const changed = !r.planOnly && it.actual !== it.planned;
+    g.font=`700 50px ${D}`; g.fillStyle = it.actual ? (changed ? "#ffd166" : "#7dffb2") : "#6f8f7f";
+    g.fillText(String(it.actual), x+colW-210, yy+60);
+    if(!r.planOnly){ g.font=`600 38px ${B}`; g.fillStyle="#9fbfae"; g.fillText(`(${it.planned})`, x+colW-60, yy+58); }
+    g.textAlign="left";
+  });
+  y = top + PER*RH + 90;
+  g.fillStyle="#e9f5ee"; g.font=`600 46px ${B}`;
+  routeLines.forEach((l,i)=>g.fillText(l, 90, y + i*62));
+  return c;
+}
+function wrap(g, text, max){ const out=[]; let line="";
+  text.split(" ").forEach(w => { const t = line ? line+" "+w : w; if(g.measureText(t).width > max && line){ out.push(line); line=w; } else line=t; });
+  if(line) out.push(line); return out; }
+async function showImage(r){
+  modal(`<h3>Building the map image…</h3><p>This takes a moment.</p>`, null, true);
+  let c; try{ c = await buildImage(r); }catch(e){ close(); return toast("The image could not be built. Try again."); }
+  const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
+  const src = c.toDataURL("image/png");
+  modal(`<h3>${esc(r.team)} · ${r.actual} points</h3>
+    <p>Here is the route map with the score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
+    <img src="${src}" alt="Route map and score breakdown for ${esc(r.team)}" style="width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">
+    <div class="mfoot"><button class="btn" data-x>Close</button><button class="btn go" data-ok>Save image</button></div>`, m => {
+      m.querySelector("[data-ok]").onclick = () => c.toBlob(b => {
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+      }, "image/png");
+    }, true);
+}
+$("imgBtn").onclick = () => showImage(currentResult());
 
 /* ================= UI HELPERS ================= */
 function modal(html, wire, wide){
