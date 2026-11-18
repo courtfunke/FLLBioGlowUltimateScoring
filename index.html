@@ -63,6 +63,11 @@ button{cursor:pointer}
 .map img{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
 .map svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin:8px 4px 0}
+.tlhead{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin:16px 4px 8px}
+.tlhead h2{font-family:var(--display);font-size:1rem;letter-spacing:.06em;text-transform:uppercase;margin:0;color:var(--muted)}
+.tlhead span{font-size:.8rem;color:var(--muted)}
+.tlwrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
+.tlwrap svg{display:block;width:100%;min-width:900px;height:auto}
 .legend i{display:inline-block;width:26px;height:5px;border-radius:3px;vertical-align:middle;margin-right:6px}
 
 .side{display:flex;flex-direction:column;gap:14px}
@@ -173,7 +178,7 @@ button{cursor:pointer}
   <section class="main">
     <div class="card mapcard">
       <div class="hint">
-        <span id="hintText">Click the red or blue launch area to start planning.</span>
+        <span id="hintText"></span>
         <div class="actions">
           <button class="btn small" id="undoBtn">Undo last stop</button>
           <button class="btn small" id="clearBtn">Clear plan</button>
@@ -188,7 +193,10 @@ button{cursor:pointer}
       <div class="legend">
         <span><i style="background:var(--blue)"></i>Launch → mission, mission → mission</span>
         <span><i style="background:var(--red)"></i>Mission → launch, launch → launch</span>
+        <span>↑ robot leaves a launch area · ↓ robot returns</span>
       </div>
+      <div class="tlhead"><h2>Match timeline</h2><span>Times come from the match clock. Start the timer to record them.</span></div>
+      <div class="tlwrap" id="matchTimeline"></div>
     </div>
 
     <aside class="side">
@@ -198,7 +206,7 @@ button{cursor:pointer}
         <div class="rows" id="scoreRows"></div>
       </div>
       <div class="card">
-        <h2>Run timeline</h2><p class="empty" style="margin:-4px 0 8px;font-size:.8rem">Click a stop to change its points.</p>
+        <h2>Route steps</h2><p class="empty" style="margin:-4px 0 8px;font-size:.8rem">Click a mission stop to change its points.</p>
         <ol class="timeline" id="timeline"></ol>
       </div>
       <div class="card">
@@ -247,24 +255,32 @@ const ORDER = [1,2,3,4,5,6,7,8,9,11,12,13,14,15];
 const BOXES = {A:[94.2,10.1], B:[49.5,45.0], C:[64.0,91.7]};
 const M10 = [[38.9,10.4],[54.4,32.6]];
 const PREC = [0,10,15,25,35,50,50];
-const LAUNCH = {red:{c:[0,2037],a:[330,1720],label:"Red"}, blue:{c:[3600,2037],a:[3270,1720],label:"Blue"}};
-const LAUNCH_R = 865, HIT_R = 95, MATCH = 150;
+const LAUNCH = {
+  red:{c:[0,2037],a:[305,1600],up:[180,1400],down:[430,1400],label:"Red",col:"#e0383b"},
+  blue:{c:[3600,2037],a:[3295,1600],up:[3170,1400],down:[3420,1400],label:"Blue",col:"#2f7ff0"}};
+const LAUNCH_R = 865, HIT_R = 95, BTN = 100, MATCH = 150, GREEN = "#3ccf6e";
 const XY = p => [p[0]*36, p[1]*20.37];
 
 /* ================= STATE ================= */
-const blank = () => ({team:0, steps:[], boxes:{A:null,B:null,C:null}, tokens:6});
-let S = load("fll-state") || blank();
+// steps: {type:"out"|"in", side, t} and {type:"mission", id, points, box, t}; prec: match times a token was used
+const blank = () => ({v:2, team:0, steps:[], boxes:{A:null,B:null,C:null}, prec:[]});
+let S = load("fll-state");
+if(!S || S.v!==2) S = Object.assign(blank(), {team: S && S.team || 0});
 let history = load("fll-history") || [];
 function load(k){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
 function save(){ try{ localStorage.setItem("fll-state", JSON.stringify(S)); localStorage.setItem("fll-history", JSON.stringify(history)); }catch(e){} }
 
 const $ = id => document.getElementById(id);
 const team = () => TEAMS[S.team] || TEAMS[0];
+const tokens = () => Math.max(0, 6 - S.prec.length);
 const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission") p[s.id]=Math.max(p[s.id]??0, s.points||0); }); return p; };
 const attempts = id => S.steps.filter(s=>s.type==="mission"&&s.id===id);
 const missionPos = id => { if(MISSIONS[id].pos) return XY(MISSIONS[id].pos); const b = Object.keys(S.boxes).find(k=>S.boxes[k]===id); return b ? XY(BOXES[b]) : null; };
-const stepPos = s => s.type==="launch" ? LAUNCH[s.side].a : missionPos(s.id);
+const stepPos = s => s.type==="mission" ? missionPos(s.id) : LAUNCH[s.side].a;
 const mLabel = id => `M${String(id).padStart(2,"0")} ${MISSIONS[id].name}`;
+const lastLaunch = () => [...S.steps].reverse().find(s=>s.type!=="mission");
+const robotOut = () => { const l = lastLaunch(); return !!l && l.type==="out"; };
+const fmt = s => { s = Math.max(0, Math.round(s)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
 
 /* ================= TEAM ================= */
 $("team").innerHTML = TEAMS.map((t,i)=>`<option value="${i}">${t.short}</option>`).join("");
@@ -277,32 +293,43 @@ svg.addEventListener("click", e => {
   const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
   const d = (a) => Math.hypot(p.x-a[0], (p.y-a[1]));
+  const inBtn = a => Math.abs(p.x-a[0]) < BTN && Math.abs(p.y-a[1]) < BTN;
+  for(const side of ["red","blue"]){
+    if(inBtn(LAUNCH[side].up)) return clickUp(side);
+    if(inBtn(LAUNCH[side].down)) return clickDown(side);
+  }
   for(const k of Object.keys(BOXES)) if(d(XY(BOXES[k])) < HIT_R) return clickBox(k);
   for(const id of ORDER) if(MISSIONS[id].pos && d(XY(MISSIONS[id].pos)) < HIT_R) return clickMission(+id);
   for(const m of M10) if(d(XY(m)) < HIT_R) return toast("Mission 10 Fragile Microhabitats: don't disturb it! You keep 20 points if it stays safe.");
-  for(const side of ["red","blue"]) if(d(LAUNCH[side].c) < LAUNCH_R) return clickLaunch(side);
+  for(const side of ["red","blue"]) if(d(LAUNCH[side].c) < LAUNCH_R) return toast(`Use the ↑ arrow when the robot leaves ${LAUNCH[side].label} launch, and the ↓ arrow when it comes back.`);
 });
 
-function clickLaunch(side){
-  const L = LAUNCH[side].label;
+function clickUp(side){
+  const L = LAUNCH[side].label, t = elapsed();
+  if(robotOut()) return toast(`The robot is already out. Click a ↓ arrow when it comes back to a launch area.`);
   if(!S.steps.length){
-    modal(`<h3>Start in the ${L} launch area?</h3><p>This will be your launch starting point.</p>
+    modal(`<h3>Start in the ${L} launch area?</h3><p>This marks the robot leaving ${L} launch at ${fmt(t)}.</p>
       <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn ${side}" data-ok>Yes, start here</button></div>`,
-      m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"launch",side}); close(); commit(); });
+      m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"out",side,t}); close(); commit(); });
     return;
   }
-  const last = S.steps[S.steps.length-1];
-  const msg = last.type==="launch" ? `Move from the ${LAUNCH[last.side].label} launch area to the ${L} launch area?` : `Return the robot to the ${L} launch area?`;
-  modal(`<h3>${msg}</h3><p>This draws a red line and starts a new run from here.</p>
-    <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn ${side}" data-ok>Yes</button></div>`,
-    m => m.querySelector("[data-ok]").onclick = () => { S.steps.push({type:"launch",side}); close(); commit(); });
+  S.steps.push({type:"out",side,t}); commit(); toast(`${L} ↑ robot leaves at ${fmt(t)}`);
+}
+function clickDown(side){
+  const t = elapsed();
+  if(!robotOut()) return toast(S.steps.length ? "The robot is already in a launch area. Click a ↑ arrow when it leaves." : "First click a ↑ arrow when the robot leaves a launch area.");
+  S.steps.push({type:"in",side,t}); commit(); toast(`${LAUNCH[side].label} ↓ robot returns at ${fmt(t)}`);
 }
 
-function needStart(){ if(!S.steps.length){ toast("First click the red or blue launch area to pick your starting point."); return true; } return false; }
+function needOut(){
+  if(robotOut()) return false;
+  toast(S.steps.length ? "The robot is in a launch area. Click a ↑ arrow when it leaves." : "First click a ↑ arrow in the red or blue launch area when the robot leaves.");
+  return true;
+}
 
-function clickMission(id, box){
-  if(needStart()) return;
-  askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box}); commit(); }, box);
+function clickMission(id, box, t){
+  if(t === undefined){ if(needOut()) return; t = elapsed(); }
+  askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box,t}); commit(); }, box);
 }
 
 function askPoints(id, done, box, editIdx){
@@ -320,13 +347,14 @@ function askPoints(id, done, box, editIdx){
 }
 
 function clickBox(k){
-  if(needStart()) return;
-  if(S.boxes[k]) return clickMission(S.boxes[k]);
+  if(needOut()) return;
+  const t = elapsed();
+  if(S.boxes[k]) return clickMission(S.boxes[k], undefined, t);
   const free = [13,14,15].filter(id => !Object.values(S.boxes).includes(id));
   modal(`<h3>Which mission goes in this white box?</h3><p>Missions 13, 14 and 15 can go in any white box.</p>
     <div class="opts">${free.map(id=>`<button class="opt" data-m="${id}">${id}<small>${MISSIONS[id].name}</small></button>`).join("")}</div>
     <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`,
-    m => m.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { close(); clickMission(+b.dataset.m, k); }));
+    m => m.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { close(); clickMission(+b.dataset.m, k, t); }));
 }
 
 $("undoBtn").onclick = () => {
@@ -334,53 +362,64 @@ $("undoBtn").onclick = () => {
   if(s.box && !S.steps.some(x=>x.type==="mission"&&x.id===s.id)) S.boxes[s.box] = null;
   commit();
 };
-$("clearBtn").onclick = () => modal(`<h3>Clear the whole plan?</h3><p>The route, points and white-box choices will be removed for ${esc(team().full)}.</p>
+$("clearBtn").onclick = () => modal(`<h3>Clear the whole plan?</h3><p>The route, timeline, precision tokens and white-box choices will be removed for ${esc(team().full)}.</p>
   <div class="mfoot"><button class="btn" data-x>Cancel</button><button class="btn red" data-ok>Clear plan</button></div>`,
-  m => m.querySelector("[data-ok]").onclick = () => { S.steps=[]; S.boxes={A:null,B:null,C:null}; S.tokens=6; close(); commit(); });
+  m => m.querySelector("[data-ok]").onclick = () => { S.steps=[]; S.boxes={A:null,B:null,C:null}; S.prec=[]; close(); commit(); });
 
 function commit(){ save(); render(); }
 
 /* ================= RENDER ================= */
+const arrowPath = (up, s=1) => up
+  ? `M0 ${-52*s}L${44*s} ${0}L${16*s} ${0}L${16*s} ${48*s}L${-16*s} ${48*s}L${-16*s} 0L${-44*s} 0Z`
+  : `M0 ${52*s}L${44*s} 0L${16*s} 0L${16*s} ${-48*s}L${-16*s} ${-48*s}L${-16*s} 0L${-44*s} 0Z`;
+
 function drawMap(){
-  const p = planned();
+  const p = planned(), out = robotOut();
   let h = `<defs>
     <marker id="ab" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2f7ff0"/></marker>
     <marker id="ar" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10z" fill="#e0383b"/></marker>
     <filter id="gl"><feGaussianBlur stdDeviation="10"/></filter></defs>`;
-  // launch highlight
-  const first = S.steps[0];
+  // launch areas + arrow buttons
   ["red","blue"].forEach(side => {
-    const on = S.steps.some(s=>s.type==="launch"&&s.side===side);
-    h += `<path d="M${LAUNCH[side].c[0]} ${2037-LAUNCH_R} A${LAUNCH_R} ${LAUNCH_R} 0 0 ${side==="red"?1:0} ${side==="red"?LAUNCH_R:3600-LAUNCH_R} 2037 L${LAUNCH[side].c[0]} 2037Z"
-      fill="${side==="red"?"#e0383b":"#2f7ff0"}" fill-opacity="${on?0.16:0.04}" stroke="none"/>`;
+    const L = LAUNCH[side], used = S.steps.some(s=>s.type!=="mission"&&s.side===side);
+    h += `<path d="M${L.c[0]} ${2037-LAUNCH_R} A${LAUNCH_R} ${LAUNCH_R} 0 0 ${side==="red"?1:0} ${side==="red"?LAUNCH_R:3600-LAUNCH_R} 2037 L${L.c[0]} 2037Z"
+      fill="${L.col}" fill-opacity="${used?0.16:0.05}" stroke="none"/>`;
+    [["up",true,!out],["down",false,out]].forEach(([k,up,on]) => {
+      const [x,y] = L[k];
+      h += `<g transform="translate(${x} ${y})" opacity="${on?1:.4}" style="cursor:pointer">
+        <rect x="-${BTN-8}" y="-${BTN-8}" width="${2*BTN-16}" height="${2*BTN-16}" rx="34" fill="${L.col}" stroke="#fff" stroke-width="10"/>
+        <path d="${arrowPath(up,1.25)}" fill="#fff"/>
+        <title>${L.label} launch: ${up?"robot leaves (↑)":"robot returns (↓)"}</title></g>`;
+    });
   });
-  if(first) h += `<g transform="translate(${LAUNCH[first.side].a})"><circle r="58" fill="${first.side==="red"?"#e0383b":"#2f7ff0"}" stroke="#fff" stroke-width="8"/><text y="20" text-anchor="middle" font-size="56" font-weight="800" fill="#fff" font-family="Chakra Petch,sans-serif">GO</text></g>`;
   // planned-mission glow rings
   Object.keys(p).forEach(id => { const c = missionPos(+id); if(!c) return;
     h += `<circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="16" filter="url(#gl)"/><circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="7"/>`; });
   // route segments
-  const seen = {};
+  const seen = {}; let n = 0;
   for(let i=1;i<S.steps.length;i++){
-    const a = stepPos(S.steps[i-1]), b = stepPos(S.steps[i]); if(!a||!b) continue;
-    const red = S.steps[i].type==="launch";
+    const A = S.steps[i-1], Bs = S.steps[i];
+    if(A.type!=="mission" && Bs.type!=="mission" && A.side===Bs.side) continue; // stayed in the same launch area
+    const a = stepPos(A), b = stepPos(Bs); if(!a||!b || (a[0]===b[0] && a[1]===b[1])) continue; // repeat attempt at the same mission
+    const red = Bs.type==="in" || (A.type!=="mission" && Bs.type!=="mission");
     const key = [a,b].map(String).sort().join("|"); const k = seen[key] = (seen[key]||0)+1;
     const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
     const off = (k-1)*34*(k%2?1:-1); const ox=-uy*off, oy=ux*off;
-    const sa = S.steps[i-1].type==="launch"?70:105, sb = S.steps[i].type==="launch"?70:118;
+    const sa = A.type==="mission"?105:40, sb = Bs.type==="mission"?118:40;
     const x1=a[0]+ux*sa+ox, y1=a[1]+uy*sa+oy, x2=b[0]-ux*sb+ox, y2=b[1]-uy*sb+oy;
-    const col = red?"#e0383b":"#2f7ff0";
+    const col = red?"#e0383b":"#2f7ff0"; n++;
     h += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="26" stroke-linecap="round" opacity=".85"/>
       <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="15" stroke-linecap="round" marker-end="url(#${red?"ar":"ab"})"/>`;
     const mx=(x1+x2)/2, my=(y1+y2)/2;
-    h += `<g transform="translate(${mx} ${my})"><circle r="34" fill="${col}" stroke="#fff" stroke-width="6"/><text y="13" text-anchor="middle" font-size="38" font-weight="800" fill="#fff" font-family="Chakra Petch,sans-serif">${i}</text></g>`;
+    h += `<g transform="translate(${mx} ${my})"><circle r="34" fill="${col}" stroke="#fff" stroke-width="6"/><text y="13" text-anchor="middle" font-size="38" font-weight="800" fill="#fff" font-family="Chakra Petch,Arial,sans-serif">${n}</text></g>`;
   }
   // white box labels
   Object.entries(S.boxes).forEach(([k,id]) => { if(!id) return; const c = XY(BOXES[k]);
-    h += `<text x="${c[0]}" y="${c[1]+38}" text-anchor="middle" font-size="108" font-weight="700" fill="#c4262b" font-family="Chakra Petch,sans-serif">${id}</text>`; });
+    h += `<text x="${c[0]}" y="${c[1]+38}" text-anchor="middle" font-size="108" font-weight="700" fill="#c4262b" font-family="Chakra Petch,Arial,sans-serif">${id}</text>`; });
   // point chips
   Object.entries(p).forEach(([id,pts]) => { const c = missionPos(+id); if(!c) return;
     const y = c[1] > 1600 ? c[1]-170 : c[1]+150, x = Math.min(Math.max(c[0],95),3505);
-    h += `<g transform="translate(${x} ${y})"><rect x="-88" y="-44" width="176" height="80" rx="40" fill="#0b1a14" stroke="#7dffb2" stroke-width="6"/><text y="16" text-anchor="middle" font-size="50" font-weight="800" fill="#7dffb2" font-family="Chakra Petch,sans-serif">+${pts}</text></g>`; });
+    h += `<g transform="translate(${x} ${y})"><rect x="-88" y="-44" width="176" height="80" rx="40" fill="#0b1a14" stroke="#7dffb2" stroke-width="6"/><text y="16" text-anchor="middle" font-size="50" font-weight="800" fill="#7dffb2" font-family="Chakra Petch,Arial,sans-serif">+${pts}</text></g>`; });
   // invisible hover titles
   ORDER.forEach(id => { if(!MISSIONS[id].pos) return; const c = XY(MISSIONS[id].pos);
     h += `<circle cx="${c[0]}" cy="${c[1]}" r="${HIT_R}" fill="transparent" style="cursor:pointer"><title>${mLabel(id)}</title></circle>`; });
@@ -390,6 +429,46 @@ function drawMap(){
   svg.innerHTML = h;
 }
 
+/* Match timeline: launch arrows, mission circles and precision tokens placed by match time (0:00–2:30). */
+function timelineSVG(W=3600){
+  const X0 = 330, X1 = W-90, xs = t => X0 + (Math.min(Math.max(t||0,0),MATCH)/MATCH)*(X1-X0);
+  const F = "Chakra Petch, Arial, sans-serif";
+  // greedy row stacking so markers that happen close together don't overlap
+  const stack = (items, gap) => { const rows=[]; items.forEach(it => {
+    let r = rows.findIndex(last => it.x - last >= gap); if(r<0){ r=rows.length; rows.push(0); } rows[r]=it.x; it.row=r; }); return Math.max(rows.length,1); };
+  const launches = S.steps.filter(s=>s.type!=="mission").map(s=>({x:xs(s.t), s}));
+  const missions = S.steps.filter(s=>s.type==="mission").map(s=>({x:xs(s.t), s}));
+  const precs = S.prec.map(t=>({x:xs(t), t}));
+  [launches, missions, precs].forEach(a=>a.sort((p,q)=>p.x-q.x));
+  const lr = stack(launches, 110), mr = stack(missions, 130), pr = stack(precs, 110);
+  const LH = 150, MH = 190, PH = 150;
+  const lanes = [
+    {name:"Launch", h: 40 + lr*LH, items:launches, kind:"launch"},
+    {name:"Missions", h: 40 + mr*MH, items:missions, kind:"mission"},
+    {name:"Precision", h: 40 + pr*PH, items:precs, kind:"prec"}];
+  const TOP = 20, AX = 90; let y = TOP;
+  lanes.forEach(l => { l.y = y; y += l.h; });
+  const H = y + AX;
+  let g = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" fill="#0b1a14"/>`;
+  lanes.forEach((l,i) => {
+    g += `<rect x="0" y="${l.y}" width="${W}" height="${l.h}" fill="${i%2?"#0f2219":"#11261d"}"/>
+      <text x="40" y="${l.y + l.h/2 + 18}" font-family="${F}" font-size="52" font-weight="700" fill="#9fbfae">${l.name.toUpperCase()}</text>`;
+  });
+  for(let t=0;t<=MATCH;t+=15){ const x = xs(t);
+    g += `<line x1="${x}" y1="${TOP}" x2="${x}" y2="${y}" stroke="#2a4a3b" stroke-width="${t%30?3:5}"/>
+      <text x="${x}" y="${y+66}" text-anchor="middle" font-family="${F}" font-size="46" font-weight="700" fill="#9fbfae">${fmt(t)}</text>`; }
+  g += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="#9fbfae" stroke-width="5"/>`;
+  lanes[0].items.forEach(it => { const s = it.s, up = s.type==="out", cy = lanes[0].y + 20 + LH/2 + it.row*LH;
+    g += `<g transform="translate(${it.x} ${cy})"><path d="${arrowPath(up,1.15)}" fill="${LAUNCH[s.side].col}" stroke="#fff" stroke-width="6" stroke-linejoin="round"/></g>`; });
+  lanes[1].items.forEach(it => { const s = it.s, cy = lanes[1].y + 20 + 70 + it.row*MH, on = s.points>0;
+    g += `<g transform="translate(${it.x} ${cy})"><circle r="56" fill="${on?"#7dffb2":"#2a4a3b"}" stroke="#fff" stroke-width="6"/>
+      <text y="17" text-anchor="middle" font-family="${F}" font-size="50" font-weight="700" fill="${on?"#06281a":"#e9f5ee"}">${s.points}</text>
+      <text y="104" text-anchor="middle" font-family="${F}" font-size="40" font-weight="700" fill="#e9f5ee">M${String(s.id).padStart(2,"0")}</text></g>`; });
+  lanes[2].items.forEach(it => { const cy = lanes[2].y + 20 + PH/2 + it.row*PH;
+    g += `<g transform="translate(${it.x} ${cy})"><path d="${arrowPath(false,1.15)}" fill="${GREEN}" stroke="#fff" stroke-width="6" stroke-linejoin="round"/></g>`; });
+  return {svg: g + `</svg>`, W, H};
+}
 
 function render(){
   const p = planned(); const mSum = Object.values(p).reduce((a,b)=>a+b,0);
@@ -398,36 +477,41 @@ function render(){
     <span class="sub">Equipment inspection</span><span class="v">20</span>
     <span class="sub">M10 Fragile Microhabitats</span><span class="v">20</span><hr>` +
     (ORDER.filter(id=>p[id]!==undefined).map(id=>`<span>${mLabel(id)}</span><span class="v">${p[id]}</span>`).join("") || `<span class="sub" style="grid-column:1/-1">No missions planned yet.</span>`);
-  // timeline
+  // route steps list
   let run=0, html="";
   S.steps.forEach((s,i) => {
-    if(s.type==="launch"){ run++; html += `<li class="run">${i===0?"Run 1 · start":"Run "+run+" · back to base"} <span class="chip ${s.side}">${LAUNCH[s.side].label} launch</span></li>`; }
+    if(s.type==="out"){ run++; html += `<li class="run"><span>${fmt(s.t)} · Run ${run}</span><span class="chip ${s.side}">↑ leaves ${LAUNCH[s.side].label}</span></li>`; }
+    else if(s.type==="in"){ html += `<li class="run"><span>${fmt(s.t)}</span><span class="chip ${s.side}">↓ back to ${LAUNCH[s.side].label}</span></li>`; }
     else { const at = attempts(s.id), k = at.indexOf(s)+1;
-      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${i}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}</span></li>`; }
+      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${fmt(s.t)}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}</span></li>`; }
   });
   $("timeline").innerHTML = html || `<li class="empty">Your route will appear here, stop by stop.</li>`;
   $("timeline").querySelectorAll(".stop").forEach(li => li.onclick = () => { const i=+li.dataset.i, s=S.steps[i];
     askPoints(s.id, pts => { s.points = pts; commit(); }, undefined, i); });
+  // match timeline graphic
+  $("matchTimeline").innerHTML = timelineSVG().svg;
   // tokens
-  $("pips").innerHTML = Array.from({length:6},(_,i)=>`<span class="pip ${i<S.tokens?"":"lost"}"></span>`).join("");
-  $("tokCount").textContent = S.tokens; $("tokPts").textContent = PREC[S.tokens];
-  $("precisionBtn").disabled = S.tokens<=0; $("tokUndo").disabled = S.tokens>=6;
+  const tk = tokens();
+  $("pips").innerHTML = Array.from({length:6},(_,i)=>`<span class="pip ${i<tk?"":"lost"}"></span>`).join("");
+  $("tokCount").textContent = tk; $("tokPts").textContent = PREC[tk];
+  $("precisionBtn").disabled = tk<=0; $("tokUndo").disabled = !S.prec.length;
   // hint
   const last = S.steps[S.steps.length-1];
-  $("hintText").textContent = !last ? "Click the red or blue launch area to start planning." :
-    last.type==="launch" ? `Robot at ${LAUNCH[last.side].label} launch. Click a mission to head out.` :
-    `Last stop: ${mLabel(last.id)}. Click the next mission, or a launch area to return.`;
+  $("hintText").textContent = !last ? "Click a ↑ arrow in the red or blue launch area when the robot leaves." :
+    last.type==="out" ? `Robot left ${LAUNCH[last.side].label} launch. Click each mission as the robot reaches it.` :
+    last.type==="in" ? `Robot is back in ${LAUNCH[last.side].label} launch. Click a ↑ arrow when it leaves again.` :
+    `Last stop: ${mLabel(last.id)}. Click the next mission, or a ↓ arrow when the robot returns.`;
   drawMap(); renderHistory(); renderReport();
 }
 
 /* ================= PRECISION ================= */
-$("precisionBtn").onclick = () => { if(S.tokens>0){ S.tokens--; beep(220,.25,"sawtooth",.5); commit(); } };
-$("tokUndo").onclick = () => { if(S.tokens<6){ S.tokens++; commit(); } };
+$("precisionBtn").onclick = () => { if(tokens()>0){ S.prec.push(elapsed()); beep(220,.25,"sawtooth",.5); commit(); } };
+$("tokUndo").onclick = () => { if(S.prec.length){ S.prec.pop(); commit(); } };
 
 /* ================= TIMER ================= */
-let remain = MATCH, tick = null, counting = false, running=false;
-const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-function showClock(){ const c=$("clock"); c.textContent = fmt(remain); c.className = remain===0?"done":remain<=30?"warn":""; }
+let remainMs = MATCH*1000, endAt = 0, tick = null, counting = false, running = false;
+const elapsed = () => Math.round(Math.min(MATCH, MATCH - (running ? Math.max(0,endAt-Date.now()) : remainMs)/1000)*10)/10;
+function showClock(){ const r = Math.ceil(remainMs/1000), c=$("clock"); c.textContent = fmt(r); c.className = r===0?"done":r<=30?"warn":""; }
 let AC;
 function beep(f,d,type="square",vol=.9){ try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume();
   const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.value=f; g.gain.setValueAtTime(vol,AC.currentTime); g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);
@@ -437,7 +521,7 @@ function say(t){ try{ const u = new SpeechSynthesisUtterance(t); u.volume=1; u.r
 
 $("startBtn").onclick = () => {
   if(counting||running) return;
-  if(remain===0) remain = MATCH;
+  if(remainMs<=0) remainMs = MATCH*1000;
   counting = true; $("startBtn").disabled = true;
   try{ speechSynthesis.cancel(); }catch(e){}
   const ov = document.createElement("div"); ov.id="count"; document.body.appendChild(ov);
@@ -450,24 +534,24 @@ $("startBtn").onclick = () => {
 };
 function run(){
   running = true; $("pauseBtn").disabled=false; $("pauseBtn").textContent="Pause"; $("startBtn").disabled=true;
-  const end = Date.now() + remain*1000;
+  endAt = Date.now() + remainMs; let lastSec = Math.ceil(remainMs/1000);
   tick = setInterval(() => {
-    const r = Math.max(0, Math.ceil((end-Date.now())/1000));
-    if(r!==remain){ remain=r; showClock(); if(remain<=3 && remain>0) beep(660,.15); }
-    if(remain===0){ stop(); beep(180,1.2,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
+    remainMs = Math.max(0, endAt-Date.now()); const sec = Math.ceil(remainMs/1000);
+    if(sec!==lastSec){ lastSec=sec; showClock(); if(sec<=3 && sec>0) beep(660,.15); }
+    if(remainMs===0){ stop(); showClock(); beep(180,1.2,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
   }, 100);
 }
-function stop(){ clearInterval(tick); running=false; $("pauseBtn").disabled = remain===0; $("startBtn").disabled=false; }
-$("pauseBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; $("pauseBtn").disabled=false; $("startBtn").disabled=true; } else if(remain>0){ run(); } };
-$("resetBtn").onclick = () => { stop(); remain=MATCH; showClock(); $("pauseBtn").disabled=true; $("pauseBtn").textContent="Pause"; };
-$("scoreBtn").onclick = () => openAdjust();
+function stop(){ if(running) remainMs = Math.max(0, endAt-Date.now()); clearInterval(tick); running=false; $("pauseBtn").disabled = remainMs===0; $("startBtn").disabled=false; }
+$("pauseBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; $("pauseBtn").disabled=false; $("startBtn").disabled=true; } else if(remainMs>0){ run(); } };
+$("resetBtn").onclick = () => { stop(); remainMs=MATCH*1000; showClock(); $("pauseBtn").disabled=true; $("pauseBtn").textContent="Pause"; };
+$("scoreBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; } openAdjust(); };
 
 /* ================= ADJUSTMENTS ================= */
 let lastResult = null;
 function openAdjust(){
   const p = planned();
   const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts]}));
-  rows.push({key:"prec", label:"Precision tokens remaining", plan:50, isTok:true, opts:[0,1,2,3,4,5,6], def:S.tokens});
+  rows.push({key:"prec", label:"Precision tokens remaining", plan:50, isTok:true, opts:[0,1,2,3,4,5,6], def:tokens()});
   rows.push({key:"insp", label:"Equipment inspection", plan:20, opts:[0,20]});
   rows.push({key:"m10", label:"M10 Fragile Microhabitats", plan:20, opts:[20,10,0], names:{20:"No damage (20)",10:"Reduced by 10 (10)",0:"Reduced by 20 (0)"}});
   const sel = r => `<select id="adj-${r.key}" data-k="${r.key}">${r.opts.map(v=>{
@@ -499,7 +583,7 @@ function openAdjust(){
       };
     }, true);
 }
-function routeText(){ return S.steps.map(s => s.type==="launch" ? `${LAUNCH[s.side].label} launch` : `M${s.id} +${s.points||0}`).join(" → "); }
+function routeText(){ return S.steps.map(s => s.type==="out" ? `${LAUNCH[s.side].label} ↑ ${fmt(s.t)}` : s.type==="in" ? `${LAUNCH[s.side].label} ↓ ${fmt(s.t)}` : `M${s.id} +${s.points||0} (${fmt(s.t)})`).join(" → "); }
 
 /* ================= HISTORY / REPORT ================= */
 function renderHistory(){
@@ -538,7 +622,7 @@ function currentResult(){
   if(lastResult && lastResult.team===team().full) return lastResult;
   const p = planned();
   const items = [...ORDER.map(id=>({label:mLabel(id),planned:p[id]||0,actual:p[id]||0})),
-    {label:"Precision tokens remaining",planned:50,actual:PREC[S.tokens],tokens:S.tokens},
+    {label:"Precision tokens remaining",planned:50,actual:PREC[tokens()],tokens:tokens()},
     {label:"Equipment inspection",planned:20,actual:20},{label:"M10 Fragile Microhabitats",planned:20,actual:20}];
   const t = items.reduce((a,i)=>a+i.planned,0);
   return {team:team().full, date:new Date().toLocaleString(), planned:t, actual:items.reduce((a,i)=>a+i.actual,0), items, route:routeText(), planOnly:true};
@@ -547,12 +631,13 @@ async function buildImage(r){
   try{ await document.fonts.ready; }catch(e){}
   const W=3600, HEAD=330, MH=2037, COLS=3, PER=Math.ceil(r.items.length/COLS), RH=86;
   const PANEL = 170 + PER*RH + 60;
-  const ctx0 = document.createElement("canvas").getContext("2d");
-  ctx0.font = "600 46px 'Nunito Sans', sans-serif";
-  const routeLines = wrap(ctx0, "Route: " + (r.route || "none"), W-160);
-  const H = HEAD + MH + PANEL + routeLines.length*62 + 90;
-  const c = document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
   const D="'Chakra Petch', 'Trebuchet MS', sans-serif", B="'Nunito Sans', system-ui, sans-serif";
+  const ctx0 = document.createElement("canvas").getContext("2d");
+  ctx0.font = `600 46px ${B}`;
+  const routeLines = wrap(ctx0, "Route: " + (r.route || "none"), W-200);
+  const TL = timelineSVG(W), TLH = 150 + TL.H + 40;
+  const H = HEAD + MH + TLH + PANEL + routeLines.length*62 + 90;
+  const c = document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
   g.fillStyle="#0b1a14"; g.fillRect(0,0,W,H);
   // header
   g.fillStyle="#7dffb2"; g.font=`700 44px ${D}`; g.fillText("FIRST LEGO LEAGUE · BIOGLOW", 90, 100);
@@ -572,8 +657,15 @@ async function buildImage(r){
   clone.querySelectorAll("title").forEach(t=>t.remove());
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml"}));
   try{ g.drawImage(await loadImg(url), 0, HEAD, W, MH); } finally { URL.revokeObjectURL(url); }
-  // breakdown
+  // match timeline
   let y = HEAD + MH + 110;
+  g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("MATCH TIMELINE", 90, y);
+  g.font=`600 36px ${B}`; g.textAlign="right";
+  g.fillText("↑ leaves launch   ↓ returns to launch   ● mission points   green ↓ precision token used", W-90, y); g.textAlign="left";
+  const tUrl = URL.createObjectURL(new Blob([TL.svg],{type:"image/svg+xml"}));
+  try{ g.drawImage(await loadImg(tUrl), 0, y+40, W, TL.H); } finally { URL.revokeObjectURL(tUrl); }
+  // breakdown
+  y = HEAD + MH + TLH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("POINTS BY MISSION", 90, y);
   g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "planned points" : "earned · (planned)", W-90, y); g.textAlign="left";
   const colW = (W-180)/COLS, top = y + 50;
@@ -603,7 +695,7 @@ async function showImage(r){
   const name = `${r.team.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")}-BioGlow-${(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`)(new Date())}.png`;
   const src = c.toDataURL("image/png");
   modal(`<h3>${esc(r.team)} · ${r.actual} points</h3>
-    <p>Here is the route map with the score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
+    <p>Here is the route map, match timeline and score breakdown. Save it to keep or share. On a phone or tablet you can also press and hold the image to save it.</p>
     <img src="${src}" alt="Route map and score breakdown for ${esc(r.team)}" style="width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:14px">
     <div class="mfoot"><button class="btn" data-x>Close</button><button class="btn go" data-ok>Save image</button></div>`, m => {
       m.querySelector("[data-ok]").onclick = () => c.toBlob(b => {
