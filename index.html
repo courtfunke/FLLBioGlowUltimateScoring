@@ -89,7 +89,7 @@ button{cursor:pointer}
 .rows .sub{color:var(--muted)}
 .rows hr{grid-column:1/-1;border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
 .timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:420px;overflow:auto}
-.timeline li{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px dashed var(--line);font-size:.9rem}
+.timeline li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px dashed var(--line);font-size:.9rem}
 .timeline .n{font-family:var(--display);font-weight:700;color:var(--muted);text-align:right}
 .timeline .pts{font-weight:800;font-variant-numeric:tabular-nums}
 .timeline .pts.zero{color:var(--muted)}
@@ -157,6 +157,41 @@ button{cursor:pointer}
 #report{display:none}
 @media (max-width:1100px){.main{grid-template-columns:1fr}.deck{grid-template-columns:1fr 1fr}.timer{grid-column:1/-1;order:-1}.precision{justify-content:center}}
 @media (max-width:620px){.deck{grid-template-columns:1fr}#precisionBtn{width:100%}.precision{flex-direction:column}}
+/* iPad / tablet landscape: one compact control row, and the whole map (with launch arrows) fits on screen without scrolling */
+@media (orientation:landscape) and (min-width:900px) and (max-width:1400px){
+  body{padding-block:10px 20px}
+  .wrap{gap:10px}
+  .deck{grid-template-columns:minmax(0,1fr) auto auto;gap:10px}
+  .card{padding:8px 12px}
+  .brand{gap:4px}
+  .brand h1{font-size:1rem}
+  .brand label{display:none}
+  #team{font-size:1rem;padding:8px 10px}
+  .timer{grid-column:auto;order:0;flex-direction:row;align-items:center;gap:14px;padding-inline:12px}
+  #clock{font-size:3.1rem}
+  .timer-btns{flex-wrap:nowrap;gap:6px}
+  .timer-btns .btn{padding:9px 12px}
+  .btn.go{padding-inline:18px}
+  .precision{justify-content:flex-end;gap:10px}
+  #precisionBtn{font-size:1.3rem;padding:12px 16px;letter-spacing:.06em}
+  .pip{width:14px;height:14px}
+  .tokens small{font-size:.72rem}
+  .main{grid-template-columns:minmax(0,1fr) 270px;gap:10px}
+  .mapcard{padding:8px}
+  .hint{margin:0 2px 6px}
+  #hintText{font-size:.85rem}
+  .hint .btn.small{padding:6px 9px;font-size:.8rem}
+  .map{width:min(100%, calc((100vh - 168px) * 1.767));width:min(100%, calc((100dvh - 168px) * 1.767));margin-inline:auto}
+  .side .card{padding:10px 12px}
+  .timeline{max-height:calc(100dvh - 260px)}
+  .stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .flash span{font-size:min(7vw,84px)}
+}
+@media (orientation:landscape) and (min-width:900px) and (max-width:1100px){
+  .main{grid-template-columns:minmax(0,1fr) 232px}
+  .side h2{font-size:.85rem}
+  .timeline li{font-size:.82rem;gap:6px}
+}
 @media print{
   :root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--panel:#fff}
   body{background:#fff;color:#000;padding:0}
