@@ -39,6 +39,7 @@ button{cursor:pointer}
 .timer-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .btn{border:0;border-radius:10px;padding:9px 16px;font-weight:800;background:var(--panel-2);color:var(--fg);border:1px solid var(--line)}
 .btn:hover{border-color:var(--glow)}
+.btn.endb:not(:disabled){background:var(--gold);border-color:var(--gold);color:#2a1d00}
 .btn.go{background:var(--glow);color:#06281a;border-color:var(--glow);font-size:1.05rem;padding-inline:24px}
 .btn.small{padding:6px 11px;font-size:.85rem}
 .btn:disabled{opacity:.45;cursor:not-allowed}
@@ -68,7 +69,7 @@ button{cursor:pointer}
 .tlhead span{font-size:.8rem;color:var(--muted)}
 .tlwrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
 .tlwrap svg{display:block;width:100%;min-width:760px;height:auto}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:10px}
 .stat{background:var(--panel-2);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .stat>span{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .stat>b{font-family:var(--display);font-size:1.7rem;font-variant-numeric:tabular-nums}
@@ -76,6 +77,7 @@ button{cursor:pointer}
 .runlist{display:flex;flex-direction:column;gap:6px;margin-top:4px;font-size:.9rem;font-variant-numeric:tabular-nums}
 .runlist strong{color:var(--glow);margin-left:6px}
 .runlist em{color:var(--gold);font-style:normal;font-weight:700}
+@media (max-width:900px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:620px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .legend i{display:inline-block;width:26px;height:5px;border-radius:3px;vertical-align:middle;margin-right:6px}
 
@@ -137,6 +139,8 @@ button{cursor:pointer}
 .hist{font-size:.85rem;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
 .hist div{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:6px 0;border-bottom:1px dashed var(--line)}
 .hist small{color:var(--muted);grid-column:1/-1}
+.hist .sent{color:var(--glow)}
+.linkbtn{background:none;border:0;padding:0;color:var(--gold);font-weight:700;text-decoration:underline;font-size:inherit}
 
 /* print report */
 #report{display:none}
@@ -169,7 +173,7 @@ button{cursor:pointer}
       <div id="clock" aria-live="polite">2:30</div>
       <div class="timer-btns">
         <button class="btn go" id="startBtn">Start</button>
-        <button class="btn" id="pauseBtn" disabled>Pause</button>
+        <button class="btn endb" id="endBtn" disabled>End</button>
         <button class="btn" id="resetBtn">Reset</button>
         <button class="btn" id="scoreBtn">Score Now</button>
       </div>
@@ -204,7 +208,7 @@ button{cursor:pointer}
         <span><i style="background:var(--red)"></i>Mission → launch, launch → launch</span>
         <span>↑ robot leaves a launch area · ↓ robot returns</span>
       </div>
-      <div class="tlhead"><h2>Match timeline</h2><span>↑ leaves launch · ↓ returns · green ↓ precision token · circles are mission points. Times come from the match clock.</span></div>
+      <div class="tlhead"><h2>Match timeline</h2><span>↑ leaves launch · ↓ returns · purple ↓ precision token · line is red/blue in a launch area, green on a run · circles are mission points. Times come from the match clock.</span></div>
       <div class="tlwrap" id="matchTimeline"></div>
       <div class="stats" id="runStats"></div>
     </div>
@@ -265,10 +269,13 @@ const ORDER = [1,2,3,4,5,6,7,8,9,11,12,13,14,15];
 const BOXES = {A:[94.2,10.1], B:[49.5,45.0], C:[64.0,91.7]};
 const M10 = [[38.9,10.4],[54.4,32.6]];
 const PREC = [0,10,15,25,35,50,50];
+
+// Google Sheet: paste the Apps Script web app URL here (see README). Leave "" to turn sending off.
+const SHEET_URL = "";
 const LAUNCH = {
   red:{c:[0,2037],a:[305,1600],up:[180,1400],down:[430,1400],label:"Red",col:"#e0383b"},
   blue:{c:[3600,2037],a:[3295,1600],up:[3170,1400],down:[3420,1400],label:"Blue",col:"#2f7ff0"}};
-const LAUNCH_R = 865, HIT_R = 95, BTN = 100, MATCH = 150, GREEN = "#3ccf6e";
+const LAUNCH_R = 865, HIT_R = 95, BTN = 100, MATCH = 150, GREEN = "#3ccf6e", PURPLE = "#a05cff";
 const XY = p => [p[0]*36, p[1]*20.37];
 
 /* ================= STATE ================= */
@@ -369,6 +376,7 @@ function clickBox(k){
 
 $("undoBtn").onclick = () => {
   const s = S.steps.pop(); if(!s) return;
+  if(s.prec){ const k = S.prec.lastIndexOf(s.t); if(k>=0) S.prec.splice(k,1); }
   if(s.box && !S.steps.some(x=>x.type==="mission"&&x.id===s.id)) S.boxes[s.box] = null;
   commit();
 };
@@ -456,7 +464,16 @@ function timelineSVG(W=3600){
     g += `<line x1="${x}" y1="${LY-150}" x2="${x}" y2="${LY+150}" stroke="#1f3a2d" stroke-width="3"/>
       <line x1="${x}" y1="${LY-18}" x2="${x}" y2="${LY+18}" stroke="#9fbfae" stroke-width="5"/>
       <text x="${x}" y="${H-40}" text-anchor="middle" font-family="${F}" font-size="46" font-weight="700" fill="#9fbfae">${fmt(t)}</text>`; }
-  g += `<line x1="${X0}" y1="${LY}" x2="${X1}" y2="${LY}" stroke="#e9f5ee" stroke-width="8" stroke-linecap="round"/>`;
+  // line color shows where the robot is: red/blue while in that launch area, green while out on a run, grey for time not yet played
+  g += `<line x1="${X0}" y1="${LY}" x2="${X1}" y2="${LY}" stroke="#3a5548" stroke-width="16" stroke-linecap="round"/>`;
+  const ls = S.steps.filter(s=>s.type!=="mission");
+  if(ls.length){
+    const endT = Math.max(elapsed(), ls[ls.length-1].t), segs = [];
+    let from = 0, col = LAUNCH[ls[0].side].col; // before the first ↑ the robot waits in its starting launch area
+    ls.forEach(s => { segs.push([from, s.t, col]); from = s.t; col = s.type==="out" ? GREEN : LAUNCH[s.side].col; });
+    segs.push([from, endT, col]);
+    segs.forEach(([a,b,c]) => { if(b>a) g += `<line x1="${xs(a)}" y1="${LY}" x2="${xs(b)}" y2="${LY}" stroke="${c}" stroke-width="16"/>`; });
+  }
   // missions: circles centered on the line, mission number underneath
   // when circles are close together, the mission labels drop to a second row so they stay readable
   const ms = S.steps.filter(s=>s.type==="mission").map(s=>({s, x:xs(s.t)})).sort((a,b)=>a.x-b.x), rowEnd = [];
@@ -467,9 +484,9 @@ function timelineSVG(W=3600){
       ${row ? `<line x1="${x}" y1="${LY+R+4}" x2="${x}" y2="${LY+R+50+row*44-34}" stroke="#9fbfae" stroke-width="3"/>` : ""}
       <text x="${x}" y="${LY+R+50+row*44}" text-anchor="middle" font-family="${F}" font-size="38" font-weight="700" fill="#e9f5ee">M${String(s.id).padStart(2,"0")}</text>`; });
   // launch arrows: leaving = up arrow below the line, returning = down arrow above the line
-  S.steps.filter(s=>s.type!=="mission").forEach(s => { g += arrow(xs(s.t), s.type==="out" ? -1 : 1, LAUNCH[s.side].col); });
+  S.steps.filter(s=>s.type!=="mission" && !s.prec).forEach(s => { g += arrow(xs(s.t), s.type==="out" ? -1 : 1, LAUNCH[s.side].col); });
   // precision tokens: green down arrows above the line
-  S.prec.forEach(t => { g += arrow(xs(t), 1, GREEN); });
+  S.prec.forEach(t => { g += arrow(xs(t), 1, PURPLE); });
   return {svg: g + `</svg>`, W, H};
 }
 
@@ -485,16 +502,23 @@ function runStats(){
   const now = elapsed();
   runs.forEach(r => { r.open = r.end===null; r.len = Math.max(0, (r.open ? now : r.end) - r.start); });
   const inLaunch = gaps.reduce((a,b)=>a+b,0), inRuns = runs.reduce((a,r)=>a+r.len,0);
-  return {runs, gaps, inLaunch, inRuns, avgLaunch: gaps.length ? inLaunch/gaps.length : 0};
+  // unused time = what was left on the clock when End was pressed (0 if the clock ran out)
+  const done = ended || remainMs<=0, unused = done ? Math.max(0, Math.ceil(remainMs/1000)) : null; // matches what the clock shows
+  return {runs, gaps, inLaunch, inRuns, avgLaunch: gaps.length ? inLaunch/gaps.length : 0, unused};
 }
+// amounts of time: under a minute shows as seconds ("42 sec"), otherwise m:ss
+const dur = s => (s = Math.max(0, Math.round(s))) < 60 ? `${s} sec` : fmt(s);
+const statTiles = st => [
+  ["Number of runs", String(st.runs.length)],
+  ["Average launch time", st.gaps.length ? dur(st.avgLaunch) : "–"],
+  ["Time in launch", dur(st.inLaunch)],
+  ["Time in runs", dur(st.inRuns)],
+  ["Unused time", st.unused===null ? "–" : dur(st.unused)]];
 function renderStats(){
   const st = runStats();
-  $("runStats").innerHTML = `<div class="stat"><span>Time in launch</span><b>${fmt(st.inLaunch)}</b></div>
-    <div class="stat"><span>Time in runs</span><b>${fmt(st.inRuns)}</b></div>
-    <div class="stat"><span>Average launch time</span><b>${st.gaps.length ? fmt(st.avgLaunch) : "–"}</b></div>
-    <div class="stat"><span>Number of runs</span><b>${st.runs.length}</b></div>
+  $("runStats").innerHTML = statTiles(st).map(([l,v]) => `<div class="stat"><span>${l}</span><b>${v}</b></div>`).join("") + `
     <div class="stat wide"><span>Points per run</span><div class="runlist">${st.runs.length ? st.runs.map((r,i)=>
-      `<div><b>Run ${i+1}</b> <span class="chip ${r.side}">${LAUNCH[r.side].label} ↑ ${fmt(r.start)}</span> → ${r.open ? `<em>still out</em>` : `<span class="chip ${r.endSide}">${LAUNCH[r.endSide].label} ↓ ${fmt(r.end)}</span>`} · ${fmt(r.len)} <strong>${r.pts} pts</strong></div>`).join("")
+      `<div><b>Run ${i+1}</b> <span class="chip ${r.side}">${LAUNCH[r.side].label} ↑ ${fmt(r.start)}</span> → ${r.open ? `<em>still out</em>` : `<span class="chip ${r.endSide}">${LAUNCH[r.endSide].label} ↓ ${fmt(r.end)}</span>`} · ${dur(r.len)} <strong>${r.pts} pts</strong></div>`).join("")
       : `<div class="empty">Runs appear here once the robot leaves a launch area.</div>`}</div></div>`;
 }
 
@@ -534,13 +558,26 @@ function render(){
 }
 
 /* ================= PRECISION ================= */
-$("precisionBtn").onclick = () => { if(tokens()>0){ S.prec.push(elapsed()); beep(220,.25,"sawtooth",.5); commit(); } };
-$("tokUndo").onclick = () => { if(S.prec.length){ S.prec.pop(); commit(); } };
+// Using a precision token means the robot was picked up, so it goes back to the launch area it left from.
+$("precisionBtn").onclick = () => {
+  if(tokens()<=0) return;
+  const t = elapsed(); S.prec.push(t); beep(220,.25,"sawtooth",.5);
+  if(robotOut()){ const side = lastLaunch().side; S.steps.push({type:"in", side, t, prec:true});
+    toast(`Precision token used. Robot returned to ${LAUNCH[side].label} launch at ${fmt(t)}.`); }
+  else toast(`Precision token used at ${fmt(t)}.`);
+  commit();
+};
+$("tokUndo").onclick = () => {
+  if(!S.prec.length) return;
+  const t = S.prec.pop(), last = S.steps[S.steps.length-1];
+  if(last && last.prec && last.t===t) S.steps.pop();
+  commit();
+};
 
 /* ================= TIMER ================= */
-let remainMs = MATCH*1000, endAt = 0, tick = null, counting = false, running = false;
+let remainMs = MATCH*1000, endAt = 0, tick = null, counting = false, running = false, ended = false;
 const elapsed = () => Math.round(Math.min(MATCH, MATCH - (running ? Math.max(0,endAt-Date.now()) : remainMs)/1000)*10)/10;
-function showClock(){ const r = Math.ceil(remainMs/1000), c=$("clock"); c.textContent = fmt(r); c.className = r===0?"done":r<=30?"warn":""; }
+function showClock(){ const r = Math.ceil(remainMs/1000), c=$("clock"); c.textContent = fmt(r); c.className = (r===0||ended)?"done":r<=30?"warn":""; }
 let AC;
 function beep(f,d,type="square",vol=.9){ try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume();
   const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.value=f; g.gain.setValueAtTime(vol,AC.currentTime); g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);
@@ -550,30 +587,32 @@ function say(t){ try{ const u = new SpeechSynthesisUtterance(t); u.volume=1; u.r
 
 $("startBtn").onclick = () => {
   if(counting||running) return;
-  if(remainMs<=0) remainMs = MATCH*1000;
+  if(ended || remainMs<=0){ remainMs = MATCH*1000; ended = false; showClock(); }
   counting = true; $("startBtn").disabled = true;
   try{ speechSynthesis.cancel(); }catch(e){}
   const ov = document.createElement("div"); ov.id="count"; document.body.appendChild(ov);
   const seq = ["3","2","1","LEGO!"];
   seq.forEach((w,i) => setTimeout(() => {
     ov.innerHTML = `<span class="${i===3?"lego":""}">${w}</span>`;
-    say(i===3?"LEGO!":w); beep(i===3?880:520, i===3?.6:.25);
+    say(i===3?"LEGO!":w);
     if(i===3) setTimeout(()=>{ ov.remove(); counting=false; run(); }, 800);
   }, i*1000));
 };
 function run(){
-  running = true; $("pauseBtn").disabled=false; $("pauseBtn").textContent="Pause"; $("startBtn").disabled=true;
+  running = true; $("endBtn").disabled=false; $("startBtn").disabled=true;
   endAt = Date.now() + remainMs; let lastSec = Math.ceil(remainMs/1000);
   tick = setInterval(() => {
     remainMs = Math.max(0, endAt-Date.now()); const sec = Math.ceil(remainMs/1000);
-    if(sec!==lastSec){ lastSec=sec; showClock(); if(sec<=3 && sec>0) beep(660,.15); }
-    if(remainMs===0){ stop(); showClock(); beep(180,1.2,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
+    if(sec!==lastSec){ lastSec=sec; showClock(); }
+    if(remainMs===0){ stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
   }, 100);
 }
-function stop(){ if(running) remainMs = Math.max(0, endAt-Date.now()); clearInterval(tick); running=false; $("pauseBtn").disabled = remainMs===0; $("startBtn").disabled=false; }
-$("pauseBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; $("pauseBtn").disabled=false; $("startBtn").disabled=true; } else if(remainMs>0){ run(); } };
-$("resetBtn").onclick = () => { stop(); remainMs=MATCH*1000; showClock(); $("pauseBtn").disabled=true; $("pauseBtn").textContent="Pause"; };
-$("scoreBtn").onclick = () => { if(running){ stop(); $("pauseBtn").textContent="Resume"; } openAdjust(); };
+function stop(){ if(running) remainMs = Math.max(0, endAt-Date.now()); clearInterval(tick); running=false; $("endBtn").disabled = true; $("startBtn").disabled=false; }
+// End finishes the match early: the clock stops where it is and the score screen opens.
+function endMatch(){ if(!running) return; stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Match over"); setTimeout(openAdjust, 700); }
+$("endBtn").onclick = endMatch;
+$("resetBtn").onclick = () => { stop(); ended = false; remainMs=MATCH*1000; showClock(); renderStats(); };
+$("scoreBtn").onclick = () => { if(running) endMatch(); else openAdjust(); };
 
 /* ================= ADJUSTMENTS ================= */
 let lastResult = null;
@@ -607,8 +646,9 @@ function openAdjust(){
         const {plan, act} = calc();
         lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act,
           items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined})),
-          route: routeText() };
-        history.unshift(lastResult); close(); commit(); showImage(lastResult);
+          route: routeText(), sent: false,
+          scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
+        history.unshift(lastResult); close(); commit(); showImage(lastResult); sendToSheet(lastResult);
       };
     }, true);
 }
@@ -616,8 +656,26 @@ function routeText(){ return S.steps.map(s => s.type==="out" ? `${LAUNCH[s.side]
 
 /* ================= HISTORY / REPORT ================= */
 function renderHistory(){
-  $("history").innerHTML = history.length ? history.map(h=>`<div><b>${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span><small>${esc(h.date)}</small></div>`).join("")
+  $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span>
+    <small>${esc(h.date)}${SHEET_URL && h.scores ? (h.sent ? ` · <span class="sent">in Google Sheet ✓</span>` : ` · <button class="linkbtn" data-send="${i}">Send to Google Sheet</button>`) : ""}</small></div>`).join("")
     : `<span class="empty">When the timer ends and you save a final score, it is listed here.</span>`;
+  $("history").querySelectorAll("[data-send]").forEach(b => b.onclick = () => sendToSheet(history[+b.dataset.send]));
+}
+
+/* ================= GOOGLE SHEET ================= */
+// Sends one row: Timestamp, Team Name, Total Score, Inspection Bonus, M01–M15, Precision Tokens (points).
+async function sendToSheet(r){
+  if(!SHEET_URL || !r || !r.scores) return;
+  const sc = r.scores, row = {team: r.team, total: r.actual, inspection: sc.insp ?? 0, precision: sc.prec ?? 0, missions: {}};
+  for(let id=1; id<=15; id++) row.missions[id] = id===10 ? (sc.m10 ?? 0) : (sc["m"+id] ?? 0);
+  try{
+    const res = await fetch(SHEET_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(row)});
+    const out = await res.json();
+    if(!out.ok) throw new Error(out.error || "rejected");
+    r.sent = true; save(); renderHistory(); toast(`${r.team}: ${r.actual} points added to the Google Sheet.`);
+  }catch(e){
+    renderHistory(); toast(`Couldn't reach the Google Sheet. Use "Send to Google Sheet" under Saved matches to try again.`);
+  }
 }
 function renderReport(){
   const p = planned(), r = lastResult && lastResult.team===team().full ? lastResult : null;
@@ -691,14 +749,13 @@ async function buildImage(r){
   let y = HEAD + MH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("MATCH TIMELINE", 90, y);
   g.font=`600 36px ${B}`; g.textAlign="right";
-  g.fillText("↑ red/blue: leaves launch   ↓ red/blue: returns to launch   ● mission points   green ↓ precision token", W-90, y); g.textAlign="left";
+  g.fillText("↑ leaves launch   ↓ returns   purple ↓ precision token   ● mission points   line: red/blue = in launch, green = on a run", W-90, y); g.textAlign="left";
   const tUrl = URL.createObjectURL(new Blob([TL.svg],{type:"image/svg+xml"}));
   try{ g.drawImage(await loadImg(tUrl), 0, y+40, W, TL.H); } finally { URL.revokeObjectURL(tUrl); }
   // run statistics
   let sy = y + 40 + TL.H + 40;
-  const tiles = [["TIME IN LAUNCH", fmt(ST.inLaunch)], ["TIME IN RUNS", fmt(ST.inRuns)],
-    ["AVERAGE LAUNCH TIME", ST.gaps.length ? fmt(ST.avgLaunch) : "–"], ["NUMBER OF RUNS", String(ST.runs.length)]];
-  const tw = (W-180-3*40)/4;
+  const tiles = statTiles(ST).map(([l,v]) => [l.toUpperCase(), v]);
+  const tw = (W-180-4*40)/5;
   tiles.forEach(([lab,val],i) => { const x = 90 + i*(tw+40);
     g.fillStyle="#183428"; g.fillRect(x, sy, tw, 190);
     g.fillStyle="#9fbfae"; g.font=`700 40px ${D}`; g.fillText(lab, x+36, sy+64);
@@ -712,7 +769,7 @@ async function buildImage(r){
     g.font=`600 40px ${B}`; g.fillStyle = LAUNCH[r.side].col; g.fillText(`${LAUNCH[r.side].label} ↑ ${fmt(r.start)}`, x+200, yy);
     g.fillStyle="#9fbfae"; g.fillText("→", x+470, yy);
     g.fillStyle = r.open ? "#ffd166" : LAUNCH[r.endSide].col; g.fillText(r.open ? "still out" : `${LAUNCH[r.endSide].label} ↓ ${fmt(r.end)}`, x+530, yy);
-    g.fillStyle="#9fbfae"; g.fillText(`run time ${fmt(r.len)}`, x+840, yy);
+    g.fillStyle="#9fbfae"; g.fillText(`run time ${dur(r.len)}`, x+840, yy);
     g.font=`700 48px ${D}`; g.fillStyle="#7dffb2"; g.textAlign="right"; g.fillText(`${r.pts} pts`, x+(W-180)/2-80, yy); g.textAlign="left"; });
   // breakdown
   y = HEAD + MH + TLH + 110;
