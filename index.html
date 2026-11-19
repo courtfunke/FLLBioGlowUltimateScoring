@@ -31,7 +31,7 @@ button{cursor:pointer}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
 .brand{display:flex;flex-direction:column;gap:8px;justify-content:center}
 .brand h1{font-family:var(--display);font-weight:700;font-size:1.25rem;margin:0;letter-spacing:.02em;color:var(--glow);text-wrap:balance}
-.brand label{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.brand label[for="team"]{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
 #team{width:100%;font-size:1.15rem;font-weight:800;padding:10px 12px;border-radius:10px;border:2px solid var(--glow);background:var(--panel-2);color:var(--fg)}
 .timer{display:flex;flex-direction:column;align-items:center;gap:8px;padding-inline:22px}
 #clock{font-family:var(--display);font-weight:700;font-size:clamp(3.2rem,8vw,5.4rem);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.04em;color:var(--fg);text-shadow:0 0 22px rgba(125,255,178,.35)}
@@ -137,6 +137,23 @@ button{cursor:pointer}
 .flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:65;pointer-events:none}
 .flash span{font-family:var(--display);font-weight:700;font-size:min(11vw,120px);color:#fff;padding:.15em .6em;border-radius:24px;border:6px solid #fff;letter-spacing:.04em;animation:flash .9s ease-out both}
 .flash.red span{background:var(--red)}.flash.blue span{background:var(--blue)}
+.flash.start span{background:#1f9d57}.flash.end span{background:#c98a00}
+.flash span small{display:block;font-family:var(--body);font-size:.32em;font-weight:800;letter-spacing:0;text-align:center;margin-top:.1em}
+.switch{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;font-weight:800;font-size:.9rem}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.switch .slider{position:relative;width:46px;height:26px;border-radius:13px;background:var(--line);transition:background .15s;flex:none}
+.switch .slider::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch input:checked + .slider{background:var(--glow)}
+.switch input:checked + .slider::after{transform:translateX(20px)}
+.switch input:focus-visible + .slider{outline:3px solid var(--gold);outline-offset:2px}
+.switch input:disabled + .slider{opacity:.5}
+.switch .swlabel small{display:block;font-weight:600;font-size:.72rem;color:var(--muted)}
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.srow .sinfo small{display:block;color:var(--muted);font-size:.8rem}
+.srow .opts{margin:0;justify-content:flex-end;gap:6px}
+.srow .opt{min-width:58px;padding:8px 10px;font-size:1.1rem}
+.srow.todo .sinfo b{color:var(--gold)}
+@media (max-width:700px){.srow{grid-template-columns:1fr}.srow .opts{justify-content:flex-start}}
 @keyframes flash{0%{transform:scale(.7);opacity:0}15%{transform:scale(1.05);opacity:1}70%{opacity:1}100%{transform:scale(1);opacity:0}}
 @media (prefers-reduced-motion:reduce){.flash span{animation:none}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--glow);padding:10px 16px;border-radius:10px;z-index:70;font-weight:600;max-width:calc(100% - 32px)}
@@ -166,8 +183,13 @@ button{cursor:pointer}
   .card{padding:8px 12px}
   .brand{gap:4px}
   .brand h1{font-size:1rem}
-  .brand label{display:none}
+  .brand label[for="team"]{display:none}
   #team{font-size:1rem;padding:8px 10px}
+  .switch{font-size:.8rem;gap:7px}
+  .switch .swlabel small{display:none}
+  .switch .slider{width:38px;height:22px;border-radius:11px}
+  .switch .slider::after{width:16px;height:16px}
+  .switch input:checked + .slider::after{transform:translateX(16px)}
   .timer{grid-column:auto;order:0;flex-direction:row;align-items:center;gap:14px;padding-inline:12px}
   #clock{font-size:3.1rem}
   .timer-btns{flex-wrap:nowrap;gap:6px}
@@ -196,12 +218,7 @@ button{cursor:pointer}
 @media print{
   :root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--panel:#fff}
   body{background:#fff;color:#000;padding:0}
-  .deck,.side,.hint,.legend,.scrim,#count,.flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:65;pointer-events:none}
-.flash span{font-family:var(--display);font-weight:700;font-size:min(11vw,120px);color:#fff;padding:.15em .6em;border-radius:24px;border:6px solid #fff;letter-spacing:.04em;animation:flash .9s ease-out both}
-.flash.red span{background:var(--red)}.flash.blue span{background:var(--blue)}
-@keyframes flash{0%{transform:scale(.7);opacity:0}15%{transform:scale(1.05);opacity:1}70%{opacity:1}100%{transform:scale(1);opacity:0}}
-@media (prefers-reduced-motion:reduce){.flash span{animation:none}}
-.toast{display:none!important}
+  .deck,.side,.hint,.legend,.scrim,#count,.toast,.flash{display:none!important}
   .main{display:block}.mapcard{border:0;padding:0}
   #report{display:block;font-family:var(--body);color:#000;page-break-before:always}
   #report h1{font-family:var(--display);margin:0 0 4px}
@@ -221,6 +238,8 @@ button{cursor:pointer}
       <h1>BioGlow Table Scoring</h1>
       <label for="team">Team</label>
       <select id="team"></select>
+      <label class="switch" for="liveToggle"><input type="checkbox" id="liveToggle"><span class="slider"></span>
+        <span class="swlabel" id="liveLabel">Live scoring</span></label>
     </div>
     <div class="card timer">
       <div id="clock" aria-live="polite">2:30</div>
@@ -304,9 +323,9 @@ const MISSIONS = {
   2:{name:"Exploding Seeds",opts:[10,20,30],pos:[31.7,52.2]},
   3:{name:"Flip the Rock",opts:[20,30],pos:[4.7,40.9]},
   4:{name:"Lucky Leaves",opts:[10,30],pos:[7.7,13.3]},
-  5:{name:"Reaching Roots",opts:[10,20],pos:[19.9,7.1]},
+  5:{name:"Reaching Roots",opts:[10,20,30],bonus:30,pos:[19.9,7.1]},
   6:{name:"Leafcutter Frenzy",opts:[10,20,30,40],pos:[75.4,6.9]},
-  7:{name:"Humongous Fungus",opts:[20],pos:[81.6,6.9]},
+  7:{name:"Humongous Fungus",opts:[20,30],bonus:30,pos:[81.6,6.9]},
   8:{name:"Tangled",opts:[30],pos:[32.8,7.1]},
   9:{name:"Research Platform",opts:[10,20,30],pos:[26.9,7.1]},
   11:{name:"Windows to the Past",opts:[20],pos:[69.8,47.3]},
@@ -316,6 +335,8 @@ const MISSIONS = {
   15:{name:"Biocentric Architecture",opts:[10,20,30,40]},
 };
 const ORDER = [1,2,3,4,5,6,7,8,9,11,12,13,14,15];
+// Score options marked "(bonus points)" (Reaching Roots and Humongous Fungus can earn 30 with the bonus)
+const isBonus = (id, v) => MISSIONS[id] && MISSIONS[id].bonus === v;
 const BOXES = {A:[94.2,10.1], B:[49.5,45.0], C:[64.0,91.7]};
 const M10 = [[38.9,10.4],[54.4,32.6]];
 const PREC = [0,10,15,25,35,50,50];
@@ -330,14 +351,18 @@ const XY = p => [p[0]*36, p[1]*20.37];
 
 /* ================= STATE ================= */
 // steps: {type:"out"|"in", side, t} and {type:"mission", id, points, box, t}; prec: match times a token was used
-const blank = () => ({v:2, team:0, steps:[], boxes:{A:null,B:null,C:null}, prec:[]});
+const blank = () => ({v:2, team:0, live:true, steps:[], boxes:{A:null,B:null,C:null}, prec:[]});
 let S = load("fll-state");
 if(!S || S.v!==2) S = Object.assign(blank(), {team: S && S.team || 0});
 let history = load("fll-history") || [];
 function load(k){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
 function save(){ try{ localStorage.setItem("fll-state", JSON.stringify(S)); localStorage.setItem("fll-history", JSON.stringify(history)); }catch(e){} }
 
+if(S.live === undefined) S.live = true;
 const $ = id => document.getElementById(id);
+// After-run scoring: a mission step with no end time yet is the one in progress
+const openMission = () => S.steps.find(s => s.type==="mission" && s.ts===null);
+const closeOpen = t => { const o = openMission(); if(o) o.ts = Math.max(o.t, t); return o; };
 const team = () => TEAMS[S.team] || TEAMS[0];
 const tokens = () => Math.max(0, 6 - S.prec.length);
 const planned = () => { const p={}; S.steps.forEach(s => { if(s.type==="mission") p[s.id]=Math.max(p[s.id]??0, s.points||0); }); return p; };
@@ -356,6 +381,13 @@ const fmt = s => { s = Math.max(0, Math.round(s)); return `${Math.floor(s/60)}:$
 $("team").innerHTML = TEAMS.map((t,i)=>`<option value="${i}">${t.short}</option>`).join("");
 $("team").value = S.team;
 $("team").onchange = e => { S.team = +e.target.value; save(); render(); };
+$("liveToggle").checked = S.live;
+$("liveToggle").onchange = e => {
+  if(running || counting){ e.target.checked = S.live; return toast("Switch scoring modes before the match starts or after it ends."); }
+  S.live = e.target.checked; commit();
+  toast(S.live ? "Live scoring: pick the points for each mission as you go."
+               : "After-run scoring: click a mission to start it and again to end it. You'll score them all when the match is over.");
+};
 
 /* ================= MAP ================= */
 const svg = $("svg");
@@ -382,7 +414,7 @@ function clickUp(side){
 function clickDown(side){
   const t = elapsed();
   if(!robotOut()) return toast(S.steps.length ? "The robot is already in a launch area. Click a ↑ arrow when it leaves." : "First click a ↑ arrow when the robot leaves a launch area.");
-  S.steps.push({type:"in",side,t}); commit(); toast(`${LAUNCH[side].label} ↓ robot returns at ${fmt(t)}`);
+  closeOpen(t); S.steps.push({type:"in",side,t}); commit(); toast(`${LAUNCH[side].label} ↓ robot returns at ${fmt(t)}`);
 }
 
 function needOut(){
@@ -393,7 +425,19 @@ function needOut(){
 
 function clickMission(id, box, t){
   if(t === undefined){ if(needOut()) return; t = elapsed(); }
+  if(!S.live) return clickMissionAfter(id, box, t);
   askPoints(id, pts => { S.steps.push({type:"mission",id,points:pts,box,t,ts:elapsed()}); commit(); }, box);
+}
+
+// After-run scoring: first click starts a mission, the next click on it ends it. Points are chosen after the match.
+// Starting a different mission (or a ↓ arrow / precision token) ends the one in progress.
+function clickMissionAfter(id, box, t){
+  const open = openMission();
+  if(open && open.id===id){ open.ts = Math.max(open.t, t); commit(); flash("end", `MISSION ENDED<small>${mLabel(id)} · ${dur(open.ts-open.t)}</small>`); return; }
+  if(open) open.ts = Math.max(open.t, t);
+  if(box) S.boxes[box] = id;
+  S.steps.push({type:"mission", id, points:null, box, t, ts:null}); commit();
+  flash("start", `MISSION STARTED<small>${mLabel(id)}</small>`);
 }
 
 function askPoints(id, done, box, editIdx){
@@ -402,7 +446,7 @@ function askPoints(id, done, box, editIdx){
   const n = editIdx !== undefined ? attempts(id).indexOf(S.steps[editIdx]) + 1 : prev.length + 1;
   const note = prev.length ? `This is attempt ${n}. Other attempts: ${prev.map(s=>s.points).join(", ")} pts. The mission only counts once, so your best attempt is what scores.` : `Choose 0 if the robot is only passing through or setting up.`;
   modal(`<h3>${mLabel(id)}${n>1?` · attempt ${n}`:""}</h3><p>How many points do you plan to earn on this visit? ${note}</p>
-    <div class="opts">${o.map(v=>`<button class="opt ${editIdx!==undefined&&S.steps[editIdx].points===v?"sel":""}" data-v="${v}">${v}<small>${v===0?"no points":"points"}</small></button>`).join("")}</div>
+    <div class="opts">${o.map(v=>`<button class="opt ${editIdx!==undefined&&S.steps[editIdx].points===v?"sel":""}" data-v="${v}">${v}<small>${v===0?"no points":isBonus(id,v)?"(bonus points)":"points"}</small></button>`).join("")}</div>
     <div class="mfoot"><button class="btn" data-x>Cancel</button></div>`,
     m => m.querySelectorAll("[data-v]").forEach(b => b.onclick = () => {
       if(box) S.boxes[box] = id;
@@ -413,7 +457,7 @@ function askPoints(id, done, box, editIdx){
 function clickBox(k){
   if(needOut()) return;
   const t = elapsed();
-  if(S.boxes[k]) return clickMission(S.boxes[k], undefined, t);
+  if(S.boxes[k]) return clickMission(S.boxes[k], k, t);
   const free = [13,14,15].filter(id => !Object.values(S.boxes).includes(id));
   modal(`<h3>Which mission goes in this white box?</h3><p>Missions 13, 14 and 15 can go in any white box.</p>
     <div class="opts">${free.map(id=>`<button class="opt" data-m="${id}">${id}<small>${MISSIONS[id].name}</small></button>`).join("")}</div>
@@ -458,8 +502,9 @@ function drawMap(){
     });
   });
   // planned-mission glow rings
-  Object.keys(p).forEach(id => { const c = missionPos(+id); if(!c) return;
-    h += `<circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="16" filter="url(#gl)"/><circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="#7dffb2" stroke-width="7"/>`; });
+  const om = openMission();
+  Object.keys(p).forEach(id => { const c = missionPos(+id); if(!c) return; const col = om && om.id===+id ? "#ffd166" : "#7dffb2";
+    h += `<circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="${col}" stroke-width="16" filter="url(#gl)"/><circle cx="${c[0]}" cy="${c[1]}" r="100" fill="none" stroke="${col}" stroke-width="7"/>`; });
   // route segments
   const seen = {}; let n = 0;
   for(let i=1;i<S.steps.length;i++){
@@ -483,8 +528,9 @@ function drawMap(){
     h += `<text x="${c[0]}" y="${c[1]+38}" text-anchor="middle" font-size="108" font-weight="700" fill="#c4262b" font-family="Chakra Petch,Arial,sans-serif">${id}</text>`; });
   // point chips
   Object.entries(p).forEach(([id,pts]) => { const c = missionPos(+id); if(!c) return;
+    if(attempts(+id).every(s => s.points==null)) pts = "?";
     const y = c[1] > 1600 ? c[1]-170 : c[1]+150, x = Math.min(Math.max(c[0],95),3505);
-    h += `<g transform="translate(${x} ${y})"><rect x="-88" y="-44" width="176" height="80" rx="40" fill="#0b1a14" stroke="#7dffb2" stroke-width="6"/><text y="16" text-anchor="middle" font-size="50" font-weight="800" fill="#7dffb2" font-family="Chakra Petch,Arial,sans-serif">+${pts}</text></g>`; });
+    h += `<g transform="translate(${x} ${y})"><rect x="-88" y="-44" width="176" height="80" rx="40" fill="#0b1a14" stroke="#7dffb2" stroke-width="6"/><text y="16" text-anchor="middle" font-size="50" font-weight="800" fill="#7dffb2" font-family="Chakra Petch,Arial,sans-serif">${pts==="?" ? "?" : "+"+pts}</text></g>`; });
   // invisible hover titles
   ORDER.forEach(id => { if(!MISSIONS[id].pos) return; const c = XY(MISSIONS[id].pos);
     h += `<circle cx="${c[0]}" cy="${c[1]}" r="${HIT_R}" fill="transparent" style="cursor:pointer"><title>${mLabel(id)}</title></circle>`; });
@@ -526,8 +572,9 @@ function timelineSVG(W=3600){
   const ms = S.steps.filter(s=>s.type==="mission").map(s=>({s, x:xs(s.t)})).sort((a,b)=>a.x-b.x), rowEnd = [];
   ms.forEach(m => { let r = rowEnd.findIndex(e => m.x - e >= 100); if(r<0){ r = rowEnd.length; rowEnd.push(0); } rowEnd[r] = m.x; m.row = r; });
   ms.forEach(({s,x,row}) => { const on = s.points>0;
+    const label = s.points==null ? "?" : s.points;
     g += `<circle cx="${x}" cy="${LY}" r="${R}" fill="${on?"#7dffb2":"#2a4a3b"}" stroke="#fff" stroke-width="6"/>
-      <text x="${x}" y="${LY+16}" text-anchor="middle" font-family="${F}" font-size="44" font-weight="700" fill="${on?"#06281a":"#e9f5ee"}">${s.points}</text>
+      <text x="${x}" y="${LY+16}" text-anchor="middle" font-family="${F}" font-size="44" font-weight="700" fill="${on?"#06281a":"#e9f5ee"}">${label}</text>
       ${row ? `<line x1="${x}" y1="${LY+R+4}" x2="${x}" y2="${LY+R+50+row*44-34}" stroke="#9fbfae" stroke-width="3"/>` : ""}
       <text x="${x}" y="${LY+R+50+row*44}" text-anchor="middle" font-family="${F}" font-size="38" font-weight="700" fill="#e9f5ee">M${String(s.id).padStart(2,"0")}</text>`; });
   // launch arrows: leaving = up arrow below the line, returning = down arrow above the line
@@ -579,7 +626,7 @@ function render(){
     if(s.type==="out"){ run++; html += `<li class="run"><span>${fmt(s.t)} · Run ${run}</span><span class="chip ${s.side}">↑ leaves ${LAUNCH[s.side].label}</span></li>`; }
     else if(s.type==="in"){ html += `<li class="run"><span>${fmt(s.t)}</span><span class="chip ${s.side}">↓ back to ${LAUNCH[s.side].label}</span></li>`; }
     else { const at = attempts(s.id), k = at.indexOf(s)+1;
-      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${fmt(s.t)}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points?"+"+s.points:"0"}<small class="mt">${dur(stepTime(s))}</small></span></li>`; }
+      html += `<li class="stop" data-i="${i}" title="Click to change points"><span class="n">${fmt(s.t)}</span><span>${mLabel(s.id)}${at.length>1?` <small class="try">try ${k}</small>`:""}</span><span class="pts ${s.points?"":"zero"}">${s.points==null ? (s.ts===null ? "in progress" : "—") : s.points ? "+"+s.points : "0"}<small class="mt">${s.ts===null ? "" : dur(stepTime(s))}</small></span></li>`; }
   });
   $("timeline").innerHTML = html || `<li class="empty">Your route will appear here, stop by stop.</li>`;
   $("timeline").querySelectorAll(".stop").forEach(li => li.onclick = () => { const i=+li.dataset.i, s=S.steps[i];
@@ -594,10 +641,15 @@ function render(){
   $("precisionBtn").disabled = tk<=0; $("tokUndo").disabled = !S.prec.length;
   // hint
   const last = S.steps[S.steps.length-1];
-  $("hintText").textContent = !last ? "Click a ↑ arrow in the red or blue launch area when the robot leaves." :
+  $("liveToggle").checked = S.live; $("liveToggle").disabled = running || counting;
+  $("liveLabel").innerHTML = S.live ? "Live scoring<small>Score each mission as you click it</small>" : "Live scoring off<small>Score all missions after the match</small>";
+  const om = openMission();
+  if(!S.live && om){ $("hintText").textContent = `${mLabel(om.id)} in progress. Click it again when it's done.`; }
+  else $("hintText").textContent = !last ? "Click a ↑ arrow in the red or blue launch area when the robot leaves." :
     last.type==="out" ? `Robot left ${LAUNCH[last.side].label} launch. Click each mission as the robot reaches it.` :
     last.type==="in" ? `Robot is back in ${LAUNCH[last.side].label} launch. Click a ↑ arrow when it leaves again.` :
-    `Last stop: ${mLabel(last.id)}. Click the next mission, or a ↓ arrow when the robot returns.`;
+    S.live ? `Last stop: ${mLabel(last.id)}. Click the next mission, or a ↓ arrow when the robot returns.`
+           : `Click a mission to start it, or a ↓ arrow when the robot returns.`;
   drawMap(); renderHistory(); renderReport();
 }
 
@@ -606,7 +658,7 @@ function render(){
 $("precisionBtn").onclick = () => {
   if(tokens()<=0) return;
   const t = elapsed(); S.prec.push(t); beep(220,.25,"sawtooth",.5);
-  if(robotOut()){ const side = lastLaunch().side; S.steps.push({type:"in", side, t, prec:true});
+  if(robotOut()){ closeOpen(t); const side = lastLaunch().side; S.steps.push({type:"in", side, t, prec:true});
     toast(`Precision token used. Robot returned to ${LAUNCH[side].label} launch at ${fmt(t)}.`); }
   else toast(`Precision token used at ${fmt(t)}.`);
   commit();
@@ -669,27 +721,28 @@ function run(){
   tick = setInterval(() => {
     remainMs = Math.max(0, endAt-Date.now()); const sec = Math.ceil(remainMs/1000);
     if(sec!==lastSec){ lastSec=sec; showClock(); }
-    if(remainMs===0){ stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Time!"); setTimeout(openAdjust, 900); }
+    if(remainMs===0){ stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Time!"); setTimeout(openScoring, 900); }
   }, 100);
 }
 function stop(){ if(running) remainMs = Math.max(0, endAt-Date.now()); clearInterval(tick); running=false; $("endBtn").disabled = true; $("startBtn").disabled=false; }
 // End finishes the match early: the clock stops where it is and the score screen opens.
-function endMatch(){ if(!running) return; stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Match over"); setTimeout(openAdjust, 700); }
+function endMatch(){ if(!running) return; stop(); ended = true; showClock(); renderStats(); beep(180,.6,"sawtooth"); say("Match over"); setTimeout(openScoring, 700); }
 $("endBtn").onclick = endMatch;
 $("resetBtn").onclick = () => { stop(); ended = false; remainMs=MATCH*1000; showClock(); renderStats(); };
-$("scoreBtn").onclick = () => { if(running) endMatch(); else openAdjust(); };
+$("scoreBtn").onclick = () => { if(running) endMatch(); else openScoring(); };
+function openScoring(){ if(S.live) openAdjust(); else openAfterScoring(); }
 
 /* ================= ADJUSTMENTS ================= */
 let lastResult = null;
 function openAdjust(){
   const p = planned();
-  const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts], time:missionTime(id), tries:attempts(id).length}));
+  const rows = ORDER.map(id => ({key:"m"+id, id, label:mLabel(id), plan:p[id]||0, opts:[0,...MISSIONS[id].opts], time:missionTime(id), tries:attempts(id).length}));
   rows.push({key:"prec", label:"Precision tokens remaining", plan:50, isTok:true, opts:[0,1,2,3,4,5,6], def:tokens()});
   rows.push({key:"insp", label:"Equipment inspection", plan:20, opts:[0,20]});
   rows.push({key:"m10", label:"M10 Fragile Microhabitats", plan:20, opts:[20,10,0], names:{20:"No damage (20)",10:"Reduced by 10 (10)",0:"Reduced by 20 (0)"}});
   const sel = r => `<select id="adj-${r.key}" data-k="${r.key}">${r.opts.map(v=>{
     const d = r.isTok ? r.def : (r.plan);
-    const txt = r.isTok ? `${v} left → ${PREC[v]} pts` : r.names ? r.names[v] : v;
+    const txt = r.isTok ? `${v} left → ${PREC[v]} pts` : r.names ? r.names[v] : (r.id && isBonus(r.id, v)) ? `${v} (bonus points)` : v;
     return `<option value="${v}" ${v===d?"selected":""}>${txt}</option>`;}).join("")}</select>`;
   modal(`<h3>Time! Do you need to make any score adjustments?</h3>
     <p>${esc(team().full)} · Each mission starts at what you planned. Change anything that went differently on the field.</p>
@@ -707,14 +760,65 @@ function openAdjust(){
         return {plan, act};
       };
       m.querySelectorAll("select").forEach(s => s.onchange = calc); calc();
+      m.querySelector("[data-save]").onclick = () => { const {plan, act} = calc(); saveResult(rows, plan, act, false); };
+    }, true);
+}
+// Saves the final score, then builds the image and sends it to the sheet. noPlan = after-run scoring (no planned points).
+function saveResult(rows, plan, act, noPlan){
+  lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act, noPlan,
+    items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined, time: r.time ?? null, tries: r.tries || 0})),
+    route: routeText(), sent: false,
+    avgLaunch: (st => st.gaps.length ? Math.round(st.avgLaunch*10)/10 : null)(runStats()),
+    scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
+  history.unshift(lastResult); close(); commit(); showImage(lastResult, true);
+}
+
+/* After-run scoring: every mission clicked during the match, in order, with its score options.
+   Starts from 20 inspection + 20 Fragile Microhabitats + precision points for the tokens left. */
+function openAfterScoring(){
+  if(closeOpen(elapsed())) commit();
+  const visits = S.steps.map((s,i)=>({s,i})).filter(v => v.s.type==="mission");
+  const pick = {}; visits.forEach(v => { if(v.s.points!=null) pick[v.i] = v.s.points; });
+  const extra = [
+    {key:"prec", label:"Precision tokens remaining", isTok:true, opts:[0,1,2,3,4,5,6], def:tokens()},
+    {key:"insp", label:"Equipment inspection", opts:[0,20], def:20},
+    {key:"m10", label:"M10 Fragile Microhabitats", opts:[20,10,0], def:20, names:{20:"No damage (20)",10:"Reduced by 10 (10)",0:"Reduced by 20 (0)"}}];
+  const tries = {};
+  const list = visits.map((v,k) => { const s = v.s; tries[s.id] = (tries[s.id]||0)+1; const n = tries[s.id];
+    return `<div class="srow ${pick[v.i]==null?"todo":""}" data-row="${v.i}"><div class="sinfo"><b>${k+1}. ${mLabel(s.id)}</b>${n>1?` <small class="try" style="display:inline;color:var(--gold)">try ${n}</small>`:""}
+      <small>${fmt(s.t)} – ${fmt(s.ts ?? s.t)} · ${dur(stepTime(s))} on mission</small></div>
+      <div class="opts">${[0,...MISSIONS[s.id].opts].map(o=>`<button class="opt ${pick[v.i]===o?"sel":""}" data-i="${v.i}" data-v="${o}">${o}${isBonus(s.id,o)?`<small>(bonus points)</small>`:""}</button>`).join("")}</div></div>`; }).join("");
+  modal(`<h3>Score this match</h3>
+    <p>${esc(team().full)} · Here is every mission you clicked, in order. Pick the points each one earned. A mission only counts once, so if you tried it more than once, its best try counts.</p>
+    <div class="totals"><div><span>Total score</span><b id="aTot" style="color:var(--glow)">0</b></div><div><span>Missions left to score</span><b id="aLeft">0</b></div></div>
+    ${list || `<p class="empty">No missions were clicked during this match.</p>`}
+    <div class="tablewrap" style="margin-top:14px"><table class="adj"><thead><tr><th>Also counted</th><th>Result</th><th class="num">Points</th></tr></thead><tbody>
+    ${extra.map(r=>`<tr><td>${r.label}</td><td><select id="aft-${r.key}">${r.opts.map(v=>`<option value="${v}" ${v===r.def?"selected":""}>${r.isTok ? `${v} left → ${PREC[v]} pts` : r.names ? r.names[v] : v}</option>`).join("")}</select></td><td class="num" id="aftp-${r.key}"></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="mfoot"><button class="btn" data-x>Back to map</button><button class="btn go" data-save>Save score &amp; make map image</button></div>`, m => {
+      const calc = () => {
+        const best = {}; visits.forEach(v => { best[v.s.id] = Math.max(best[v.s.id] ?? 0, pick[v.i] ?? 0); });
+        let tot = Object.values(best).reduce((a,b)=>a+b,0);
+        extra.forEach(r => { const v = +m.querySelector("#aft-"+r.key).value, pts = r.isTok ? PREC[v] : v; r.raw = v; r.actual = pts; tot += pts; m.querySelector("#aftp-"+r.key).textContent = pts; });
+        m.querySelector("#aTot").textContent = tot;
+        m.querySelector("#aLeft").textContent = visits.filter(v => pick[v.i]==null).length;
+        return {best, tot};
+      };
+      m.querySelectorAll("[data-i]").forEach(b => b.onclick = () => {
+        const i = +b.dataset.i; pick[i] = +b.dataset.v;
+        m.querySelectorAll(`[data-i="${i}"]`).forEach(x => x.classList.toggle("sel", x===b));
+        m.querySelector(`[data-row="${i}"]`).classList.remove("todo"); calc();
+      });
+      m.querySelectorAll("select").forEach(x => x.onchange = calc); calc();
       m.querySelector("[data-save]").onclick = () => {
-        const {plan, act} = calc();
-        lastResult = { team: team().full, date: new Date().toLocaleString(), planned: plan, actual: act,
-          items: rows.map(r=>({label:r.label, planned:r.plan, actual:r.actual, tokens: r.isTok ? r.raw : undefined, time: r.time ?? null, tries: r.tries || 0})),
-          route: routeText(), sent: false,
-          avgLaunch: (st => st.gaps.length ? Math.round(st.avgLaunch*10)/10 : null)(runStats()),
-          scores: Object.fromEntries(rows.map(r => [r.key, r.actual])) };
-        history.unshift(lastResult); close(); commit(); showImage(lastResult, true);
+        const left = visits.filter(v => pick[v.i]==null).length;
+        if(left && !m.dataset.warned){ m.dataset.warned = 1; toast(`${left} mission${left>1?"s are":" is"} not scored yet and will count as 0. Press Save again to continue.`); return; }
+        visits.forEach(v => { v.s.points = pick[v.i] ?? 0; });
+        const {tot} = calc();
+        const p = planned();
+        const rows = ORDER.map(id => ({key:"m"+id, label:mLabel(id), plan:p[id]||0, actual:p[id]||0, time:missionTime(id), tries:attempts(id).length}));
+        extra.forEach(r => rows.push({key:r.key, label:r.label, plan:r.actual, actual:r.actual, raw:r.raw, isTok:!!r.isTok}));
+        saveResult(rows, tot, tot, true);
       };
     }, true);
 }
@@ -722,7 +826,7 @@ function routeText(){ return S.steps.map(s => s.type==="out" ? `${LAUNCH[s.side]
 
 /* ================= HISTORY / REPORT ================= */
 function renderHistory(){
-  $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${h.best&&h.best.high?"🏆 ":""}${esc(h.team)}</b><span><b>${h.actual}</b> / ${h.planned} planned</span>
+  $("history").innerHTML = history.length ? history.map((h,i)=>`<div><b>${h.best&&h.best.high?"🏆 ":""}${esc(h.team)}</b><span><b>${h.actual}</b>${h.noPlan ? " pts" : ` / ${h.planned} planned`}</span>
     <small>${esc(h.date)}${SHEET_URL && h.scores ? (h.sent ? ` · <span class="sent">in Google Sheet ✓</span>` : ` · <button class="linkbtn" data-send="${i}">Send to Google Sheet</button>`) : ""}</small></div>`).join("")
     : `<span class="empty">When the timer ends and you save a final score, it is listed here.</span>`;
   $("history").querySelectorAll("[data-send]").forEach(b => b.onclick = () => resend(history[+b.dataset.send]));
@@ -845,7 +949,7 @@ async function buildImage(r){
       g.fillText(r.best.count ? `Team best ${r.best.prev}` : "First recorded score", bx, 200);
     }
   }
-  if(!r.planOnly){ const d=r.actual-r.planned; g.fillStyle="#9fbfae"; g.font=`600 46px ${B}`;
+  if(!r.planOnly && !r.noPlan){ const d=r.actual-r.planned; g.fillStyle="#9fbfae"; g.font=`600 46px ${B}`;
     g.fillText(`Planned ${r.planned} · ${d>=0?"+":""}${d}`, W-90, 315); }
   g.textAlign="left";
   // map + route overlay
@@ -904,7 +1008,7 @@ async function buildImage(r){
   // breakdown
   y = HEAD + MH + TLH + 110;
   g.fillStyle="#9fbfae"; g.font=`700 52px ${D}`; g.fillText("POINTS BY MISSION", 90, y);
-  g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "time on mission · planned points" : "time on mission · earned · (planned)", W-90, y); g.textAlign="left";
+  g.font=`600 36px ${B}`; g.textAlign="right"; g.fillText(r.planOnly ? "time on mission · planned points" : r.noPlan ? "time on mission · earned" : "time on mission · earned · (planned)", W-90, y); g.textAlign="left";
   const colW = (W-180)/COLS, top = y + 50;
   r.items.forEach((it,i) => {
     const col = Math.floor(i/PER), row = i%PER, x = 90 + col*colW, yy = top + row*RH;
@@ -914,10 +1018,10 @@ async function buildImage(r){
     if(it.time!=null){ g.textAlign="right"; g.font=`600 36px ${B}`; g.fillStyle="#9fbfae";
       g.fillText(dur(it.time) + (it.tries>1 ? ` · ${it.tries} tries` : ""), x+colW-330, yy+58); g.textAlign="left"; }
     g.textAlign="right";
-    const changed = !r.planOnly && it.actual !== it.planned;
+    const changed = !r.planOnly && !r.noPlan && it.actual !== it.planned;
     g.font=`700 50px ${D}`; g.fillStyle = it.actual ? (changed ? "#ffd166" : "#7dffb2") : "#6f8f7f";
     g.fillText(String(it.actual), x+colW-210, yy+60);
-    if(!r.planOnly){ g.font=`600 38px ${B}`; g.fillStyle="#9fbfae"; g.fillText(`(${it.planned})`, x+colW-60, yy+58); }
+    if(!r.planOnly && !r.noPlan){ g.font=`600 38px ${B}`; g.fillStyle="#9fbfae"; g.fillText(`(${it.planned})`, x+colW-60, yy+58); }
     g.textAlign="left";
   });
   y = top + PER*RH + 90;
